@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Volume2, VolumeX, Bot, Mic, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText } from 'lucide-react';
+import { ArrowLeft, Volume2, VolumeX, Bot, Mic, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText } from 'lucide-react';
 import type { DefenseSession, TranscriptItem } from '../types';
 import { getActiveSession, clearActiveSession, saveActiveSession, saveHistoryItem } from '../lib/storage';
 import { generateQuestion, evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
 import { speakText, stopSpeaking } from '../lib/speech';
 
 import VoiceOrb from '../components/VoiceOrb';
-import SpokenPanel from '../components/SpokenPanel';
 import VoiceAnswer from '../components/VoiceAnswer';
 import ConfirmModal from '../components/ConfirmModal';
 import SessionTranscript from '../components/SessionTranscript';
@@ -532,8 +531,16 @@ export default function DefenseRoomPage() {
   const activeQuestion = activeQuestionItem ? activeQuestionItem.content : '';
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', overflow: 'hidden' }}>
-
+    <div
+      className="defense-root"
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#f8fafc',
+        overflow: 'hidden'
+      }}
+    >
       {/* Mobile Drawer Overlay */}
       <div
         className={`mobile-overlay ${showLeftDrawer || showRightDrawer ? 'open' : ''}`}
@@ -541,50 +548,50 @@ export default function DefenseRoomPage() {
       ></div>
 
       {/* Header Fullscreen Workspace */}
-      <header style={{ height: '72px', flexShrink: 0, backgroundColor: 'var(--white)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 16px', zIndex: 10 }}>
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <header className="defense-header">
+        <div className="defense-header-inner">
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={() => setShowBackModal(true)} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-              <ArrowLeft size={18} /> <span className="hidden-mobile">Kembali</span>
+          {/* Left: Back */}
+          <div className="defense-header-side defense-header-left">
+            <button
+              onClick={() => setShowBackModal(true)}
+              className="defense-back-btn"
+            >
+              <ArrowLeft size={18} />
+              <span className="defense-back-text">Kembali</span>
             </button>
-            <div className="hidden-mobile" style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-color)' }}></div>
-            <div className="hidden-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, color: 'var(--primary-blue)' }}>
+
+            <div className="defense-brand-separator"></div>
+
+            <div className="defense-brand">
               RuangUji
             </div>
           </div>
 
-          {/* Mobile Toggles (Middle) */}
-          <div className="mobile-drawer-toggles" style={{ alignItems: 'center', gap: '0.5rem' }}>
-            <button onClick={() => setShowLeftDrawer(true)} className="badge" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <Info size={12} /> Info
-            </button>
-            <button onClick={() => setShowRightDrawer(true)} className="badge" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <FileText size={12} /> Transkrip
-            </button>
+          {/* Center: Title */}
+          <div className="defense-header-title">
+            <h1>Ruang Sidang</h1>
+            <p>Pertanyaan {currentQ} dari {research.questionCount}</p>
           </div>
 
-          {/* Desktop Center Title */}
-          <div className="hidden-mobile" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <h1 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.125rem' }}>Ruang Sidang</h1>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Pertanyaan {currentQ} dari {research.questionCount}</p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span className="badge hidden-mobile" style={{ backgroundColor: '#fef3c7', color: '#b45309', textTransform: 'capitalize' }}>
+          {/* Right: Actions */}
+          <div className="defense-header-side defense-header-right">
+            <span className="badge defense-desktop-only" style={{ backgroundColor: '#fef3c7', color: '#b45309', textTransform: 'capitalize' }}>
               Mode: {research.examinerMode}
             </span>
-            <span className="badge hidden-mobile" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+
+            <span className="badge defense-desktop-only" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
               Durasi: {research.sessionLength}
             </span>
+
             <select
               value={voiceProfile}
               onChange={(e) => {
                 setVoiceProfile(e.target.value);
                 localStorage.setItem('ruanguji_voice_profile', e.target.value);
               }}
-              className="badge hidden-mobile"
-              style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', outline: 'none', cursor: 'pointer' }}
+              className="badge defense-desktop-only"
+              style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}
             >
               <option value="Tenang">Tenang</option>
               <option value="Formal">Formal</option>
@@ -592,7 +599,11 @@ export default function DefenseRoomPage() {
               <option value="Tegas">Tegas</option>
               <option value="Cepat">Cepat</option>
             </select>
-            <button onClick={() => setShowEndModal(true)} className="btn btn-secondary" style={{ backgroundColor: '#fee2e2', color: '#b91c1c', borderColor: '#fca5a5', padding: '0.375rem 0.75rem', fontSize: '0.875rem' }}>
+
+            <button
+              onClick={() => setShowEndModal(true)}
+              className="btn btn-secondary defense-end-btn"
+            >
               Akhiri Sesi
             </button>
           </div>
@@ -600,11 +611,39 @@ export default function DefenseRoomPage() {
         </div>
       </header>
 
+      {/* Mobile Panel Switcher */}
+      <div className="defense-mobile-tabs">
+        <button
+          onClick={() => { setShowLeftDrawer(prev => !prev); }}
+          className={`defense-mobile-tab-btn ${showLeftDrawer ? 'active' : ''}`}
+        >
+          <Info size={14} />
+          Info
+        </button>
+
+        <button
+          onClick={() => { setShowRightDrawer(prev => !prev); }}
+          className={`defense-mobile-tab-btn ${showRightDrawer ? 'active' : ''}`}
+        >
+          <FileText size={14} />
+          Transkrip
+        </button>
+      </div>
+
       {/* Body Workspace 3 Panel */}
-      <main style={{ flex: 1, padding: '20px', overflow: 'hidden' }} className="defense-workspace-grid">
+      <main className="defense-workspace-grid">
 
         {/* Panel 1: Info Penelitian */}
-        <div className={`defense-panel-left ${showLeftDrawer ? 'open' : ''}`} style={{ border: '1px solid var(--border-color)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div
+          className={`defense-panel-left defense-panel ${showLeftDrawer ? 'open' : ''}`}
+          style={{
+            border: '1px solid var(--border-color)',
+            borderRadius: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+        >
           <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Informasi Latihan</p>
@@ -699,8 +738,17 @@ export default function DefenseRoomPage() {
         </div>
 
         {/* Panel 2: Obrolan / Voice Stage */}
-        <div className="defense-panel-main" style={{ backgroundColor: 'var(--white)', border: '1px solid var(--border-color)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
+        <div
+          className="defense-panel-main defense-panel"
+          style={{
+            backgroundColor: 'var(--white)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+        >
           <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-soft)' }}>
             <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -712,7 +760,7 @@ export default function DefenseRoomPage() {
           <div ref={middleScrollRef} className="custom-scrollbar defense-center-scroll" style={{ flex: 1, overflowY: 'auto', padding: isVoiceMode ? '0' : '24px', display: 'flex', flexDirection: 'column', alignItems: isVoiceMode ? 'center' : 'stretch', gap: isVoiceMode ? '0' : '20px', scrollBehavior: 'smooth' }}>
 
             {isVoiceMode ? (
-              // ================= VOICE STAGE UI =================
+              // VOICE STAGE UI
               <div className="fade-up voice-stage-container" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '16px' }}>
 
                 {isGeneratingQuestion ? (
@@ -757,7 +805,7 @@ export default function DefenseRoomPage() {
 
               </div>
             ) : (
-              // ================= TEXT/CHAT UI =================
+              // TEXT/CHAT UI
               <>
                 {session.transcript.map((item) => {
                   if (item.type === 'question') {
@@ -895,7 +943,7 @@ export default function DefenseRoomPage() {
           <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--white)' }}>
 
             {isVoiceMode ? (
-              // ================= VOICE MODE CONTROLS =================
+              // VOICE MODE CONTROLS
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button onClick={() => setIsVoiceMode(false)} disabled={isGeneratingQuestion || isEvaluatingAnswer} className="btn btn-secondary" style={{ padding: '0.625rem 1rem', borderRadius: '999px', fontSize: '0.875rem' }}>
                   Kembali ke Chat
@@ -924,7 +972,7 @@ export default function DefenseRoomPage() {
                 </div>
               </div>
             ) : (
-              // ================= CHAT MODE INPUT =================
+              // CHAT MODE INPUT
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', backgroundColor: 'var(--bg-soft)', padding: '0.5rem', borderRadius: '24px', border: '1px solid var(--border-color)' }}>
                 <textarea
                   className="custom-scrollbar"
@@ -992,10 +1040,19 @@ export default function DefenseRoomPage() {
         </div>
 
         {/* Panel 3: Transkrip Sesi */}
-        <div className={`defense-panel-right ${showRightDrawer ? 'open' : ''}`} style={{ border: '1px solid var(--border-color)', borderRadius: '24px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div
+          className={`defense-panel-right defense-panel ${showRightDrawer ? 'open' : ''}`}
+          style={{
+            border: '1px solid var(--border-color)',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
           <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>TRANSKRIP SESI</p>
+              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>Transkrip Sesi</p>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Riwayat lengkap obrolan</p>
             </div>
             {/* Close button for mobile */}
@@ -1048,6 +1105,324 @@ export default function DefenseRoomPage() {
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+
+        .defense-header {
+          height: 72px;
+          flex-shrink: 0;
+          background-color: var(--white);
+          border-bottom: 1px solid var(--border-color);
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          z-index: 60;
+          position: relative;
+        }
+
+        .defense-header-inner {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .defense-header-side {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          min-width: 0;
+        }
+
+        .defense-header-left {
+          justify-content: flex-start;
+        }
+
+        .defense-header-right {
+          justify-content: flex-end;
+        }
+
+        .defense-back-btn {
+          background: none;
+          border: none;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          cursor: pointer;
+          padding: 0.4rem 0.25rem;
+          white-space: nowrap;
+        }
+
+        .defense-brand-separator {
+          width: 1px;
+          height: 24px;
+          background-color: var(--border-color);
+        }
+
+        .defense-brand {
+          font-weight: 800;
+          color: var(--primary-blue);
+          white-space: nowrap;
+        }
+
+        .defense-header-title {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          min-width: 120px;
+        }
+
+        .defense-header-title h1 {
+          font-size: 1rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          margin: 0 0 0.125rem 0;
+          line-height: 1.1;
+        }
+
+        .defense-header-title p {
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .defense-end-btn {
+          background-color: #fee2e2 !important;
+          color: #b91c1c !important;
+          border-color: #fca5a5 !important;
+          padding: 0.375rem 0.75rem !important;
+          font-size: 0.875rem !important;
+          white-space: nowrap;
+        }
+
+        .defense-mobile-tabs {
+          display: none;
+        }
+
+        .defense-mobile-tab-btn.active {
+          background-color: var(--primary-blue);
+          color: var(--white);
+        }
+
+        .defense-workspace-grid {
+          flex: 1;
+          padding: 20px;
+          overflow: hidden;
+        }
+
+        @media (max-width: 991px) {
+          .defense-root {
+            background-color: var(--white) !important;
+          }
+
+          .defense-header {
+            height: 72px;
+            padding: 0 10px;
+          }
+
+          .defense-header-inner {
+            grid-template-columns: auto 1fr auto;
+            gap: 0.5rem;
+          }
+
+          .defense-brand,
+          .defense-brand-separator,
+          .defense-back-text,
+          .defense-desktop-only {
+            display: none !important;
+          }
+
+          .defense-back-btn {
+            width: 36px;
+            height: 36px;
+            justify-content: center;
+            padding: 0;
+            border-radius: 999px;
+            color: var(--text-secondary);
+          }
+
+          .defense-header-title h1 {
+            font-size: 0.95rem;
+          }
+
+          .defense-header-title p {
+            font-size: 0.7rem;
+          }
+
+          .defense-end-btn {
+            padding: 0.45rem 0.7rem !important;
+            font-size: 0.78rem !important;
+            border-radius: 0.65rem !important;
+          }
+
+          .defense-mobile-tabs {
+            height: 44px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0 12px;
+            background-color: var(--white);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 50;
+            position: relative;
+          }
+
+          .defense-mobile-tab-btn {
+            border: none;
+            background-color: var(--bg-soft);
+            color: var(--text-secondary);
+            border-radius: 999px;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            cursor: pointer;
+          }
+
+          .defense-workspace-grid {
+            padding: 0 !important;
+            flex: 1;
+            overflow: hidden;
+            display: block !important;
+          }
+
+          .defense-panel-main {
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+            border-bottom: none !important;
+          }
+
+          .defense-panel-main > div:first-child {
+            border-radius: 0 !important;
+          }
+
+          .defense-panel {
+            border-radius: 0 !important;
+          }
+
+          .defense-panel-left,
+          .defense-panel-right {
+            position: fixed !important;
+            top: 116px !important;
+            bottom: 0 !important;
+            height: auto !important;
+            width: min(86vw, 340px) !important;
+            max-width: 340px !important;
+            background-color: var(--white) !important;
+            z-index: 55 !important;
+            border-radius: 0 !important;
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+            transition: transform 0.25s ease;
+          }
+
+          .defense-panel-left {
+            left: 0 !important;
+            transform: translateX(-105%);
+            border-left: none !important;
+          }
+
+          .defense-panel-right {
+            right: 0 !important;
+            transform: translateX(105%);
+            border-right: none !important;
+          }
+
+          .defense-panel-left.open {
+            transform: translateX(0);
+          }
+
+          .defense-panel-right.open {
+            transform: translateX(0);
+          }
+
+          .mobile-overlay {
+            position: fixed !important;
+            top: 116px !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background-color: rgba(15, 23, 42, 0.38) !important;
+            z-index: 54 !important;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            backdrop-filter: blur(4px);
+          }
+
+          .mobile-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+          }
+
+          .defense-center-scroll {
+            padding: 18px !important;
+          }
+
+          .defense-center-scroll > div {
+            max-width: 100%;
+          }
+
+          .defense-panel-main [style*="padding: 16px 24px"] {
+            padding-left: 18px !important;
+            padding-right: 18px !important;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .defense-header {
+            height: 72px;
+            padding: 0 8px;
+          }
+
+          .defense-header-title h1 {
+            font-size: 0.9rem;
+          }
+
+          .defense-header-title p {
+            font-size: 0.67rem;
+          }
+
+          .defense-end-btn {
+            padding: 0.45rem 0.65rem !important;
+            font-size: 0.74rem !important;
+          }
+
+          .defense-mobile-tabs {
+            height: 42px;
+            padding: 0 8px;
+          }
+
+          .defense-mobile-tab-btn {
+            font-size: 0.68rem;
+            padding: 0.38rem 0.65rem;
+          }
+
+          .defense-panel-left,
+          .defense-panel-right {
+            top: 114px !important;
+            width: 86vw !important;
+          }
+
+          .mobile-overlay {
+            top: 114px !important;
+          }
+
+          .defense-center-scroll {
+            padding: 16px !important;
+          }
         }
       `}</style>
     </div>

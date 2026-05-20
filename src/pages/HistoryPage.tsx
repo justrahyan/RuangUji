@@ -78,238 +78,330 @@ function downloadTranscriptPdf(item: HistoryItem) {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 16;
   const contentWidth = pageWidth - margin * 2;
+
+  const colors = {
+    blue: [37, 99, 235] as [number, number, number],
+    blueDark: [30, 64, 175] as [number, number, number],
+    blueSoft: [239, 246, 255] as [number, number, number],
+    green: [22, 101, 52] as [number, number, number],
+    greenSoft: [240, 253, 244] as [number, number, number],
+    orange: [154, 52, 18] as [number, number, number],
+    orangeSoft: [255, 247, 237] as [number, number, number],
+    slate: [15, 23, 42] as [number, number, number],
+    muted: [100, 116, 139] as [number, number, number],
+    border: [226, 232, 240] as [number, number, number],
+    soft: [248, 250, 252] as [number, number, number],
+    white: [255, 255, 255] as [number, number, number],
+  };
+
   let y = 18;
 
-  const ensureSpace = (height = 12) => {
+  const setColor = (color: [number, number, number]) => {
+    doc.setTextColor(color[0], color[1], color[2]);
+  };
+
+  const ensureSpace = (height = 20) => {
     if (y + height > pageHeight - 18) {
       doc.addPage();
       y = 18;
     }
   };
 
-  const addWrappedText = (
+  const split = (text: string, width: number, size = 10) => {
+    doc.setFontSize(size);
+    return doc.splitTextToSize(text || '-', width) as string[];
+  };
+
+  const addFooter = () => {
+    const totalPages = doc.getNumberOfPages();
+
+    for (let i = 1; i <= totalPages; i += 1) {
+      doc.setPage(i);
+
+      doc.setDrawColor(...colors.border);
+      doc.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      setColor([148, 163, 184]);
+      doc.text(`RuangUji • Halaman ${i} dari ${totalPages}`, margin, pageHeight - 8);
+    }
+  };
+
+  const addSectionTitle = (title: string, subtitle?: string) => {
+    ensureSpace(subtitle ? 18 : 12);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    setColor(colors.blue);
+    doc.text(title, margin, y);
+
+    y += 6;
+
+    if (subtitle) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setColor(colors.muted);
+      const lines = split(subtitle, contentWidth, 9);
+      doc.text(lines, margin, y);
+      y += lines.length * 4.5 + 2;
+    } else {
+      y += 2;
+    }
+  };
+
+  const addParagraph = (
     text: string,
     options?: {
       size?: number;
-      style?: 'normal' | 'bold';
       color?: [number, number, number];
-      lineHeight?: number;
       indent?: number;
+      lineHeight?: number;
+      width?: number;
     }
   ) => {
-    const size = options?.size ?? 10;
-    const style = options?.style ?? 'normal';
-    const color = options?.color ?? [15, 23, 42];
-    const lineHeight = options?.lineHeight ?? 5.5;
+    const size = options?.size ?? 9.5;
+    const color = options?.color ?? colors.slate;
     const indent = options?.indent ?? 0;
+    const lineHeight = options?.lineHeight ?? 5;
+    const width = options?.width ?? contentWidth - indent;
 
-    doc.setFont('helvetica', style);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(size);
-    doc.setTextColor(color[0], color[1], color[2]);
+    setColor(color);
 
-    const lines = doc.splitTextToSize(text || '-', contentWidth - indent);
+    const lines = split(text || '-', width, size);
 
-    lines.forEach((line: string) => {
+    lines.forEach((line) => {
       ensureSpace(lineHeight + 2);
       doc.text(line, margin + indent, y);
       y += lineHeight;
     });
   };
 
-  const addLabelValue = (label: string, value?: string | number | null) => {
-    if (value === undefined || value === null || String(value).trim() === '') return;
-
-    ensureSpace(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text(label, margin, y);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(15, 23, 42);
-    const valueLines = doc.splitTextToSize(String(value), contentWidth - 46);
-    doc.text(valueLines, margin + 46, y);
-    y += Math.max(7, valueLines.length * 5);
+  const drawRoundedCard = (
+    x: number,
+    yPos: number,
+    width: number,
+    height: number,
+    fill: [number, number, number] = colors.white,
+    border: [number, number, number] = colors.border
+  ) => {
+    doc.setFillColor(...fill);
+    doc.setDrawColor(...border);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(x, yPos, width, height, 4, 4, 'FD');
   };
 
-  const addSectionTitle = (title: string) => {
-    ensureSpace(14);
-    y += 3;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(37, 99, 235);
-    doc.text(title, margin, y);
-    y += 7;
+  const addInfoGrid = () => {
+    const leftX = margin;
+    const rightX = margin + contentWidth / 2 + 4;
+    const colWidth = contentWidth / 2 - 4;
+    const rowHeight = 15;
+
+    const fields = [
+      ['Judul', item.title],
+      ['Tanggal', formatPdfDate(item.createdAt)],
+      ['Jenis Sidang', item.sessionType || '-'],
+      ['Bidang', item.field || '-'],
+      ['Metode', item.method || '-'],
+      ['Mode Penguji', item.examinerMode || '-'],
+      ['Durasi', `${item.sessionLength || 'Normal'} (${item.questionCount} Pertanyaan)`],
+    ];
+
+    let currentX = leftX;
+    let currentY = y;
+
+    fields.forEach(([label, value], index) => {
+      if (index % 2 === 0) {
+        currentX = leftX;
+        if (index > 0) currentY += rowHeight + 3;
+      } else {
+        currentX = rightX;
+      }
+
+      drawRoundedCard(currentX, currentY, colWidth, rowHeight, colors.soft, colors.border);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      setColor(colors.muted);
+      doc.text(label.toUpperCase(), currentX + 4, currentY + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      setColor(colors.slate);
+
+      const valueLines = split(String(value || '-'), colWidth - 8, 8.5).slice(0, 2);
+      doc.text(valueLines, currentX + 4, currentY + 10);
+    });
+
+    y = currentY + rowHeight + 8;
   };
 
-  // Cover header
-  doc.setFillColor(37, 99, 235);
-  doc.rect(0, 0, pageWidth, 34, 'F');
+  const addSmallCardList = (
+    title: string,
+    items: string[] | undefined,
+    tone: 'green' | 'orange' | 'blue'
+  ) => {
+    const color =
+      tone === 'green' ? colors.green : tone === 'orange' ? colors.orange : colors.blueDark;
+    const fill =
+      tone === 'green' ? colors.greenSoft : tone === 'orange' ? colors.orangeSoft : colors.blueSoft;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(255, 255, 255);
-  doc.text('Transkrip Simulasi RuangUji', margin, 17);
+    const list = items?.length ? items : ['Tidak ada.'];
+    const lineCount = list.reduce((acc, text) => acc + split(text, contentWidth - 14, 9).length, 0);
+    const cardHeight = Math.max(22, 14 + lineCount * 5 + list.length * 2);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('Dokumen hasil latihan tanya-jawab sidang akademik', margin, 25);
+    ensureSpace(cardHeight + 8);
 
-  y = 45;
-
-  // Score card
-  doc.setDrawColor(37, 99, 235);
-  doc.setLineWidth(0.8);
-  doc.roundedRect(margin, y, contentWidth, 28, 4, 4);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(37, 99, 235);
-  doc.text(String(item.score ?? 0), margin + 8, y + 18);
-
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Skor Akhir', margin + 31, y + 11);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  doc.text(item.summary || 'Simulasi selesai.', margin + 31, y + 18, {
-    maxWidth: contentWidth - 38,
-  });
-
-  y += 40;
-
-  addSectionTitle('Informasi Simulasi');
-  addLabelValue('Judul', item.title);
-  addLabelValue('Tanggal', formatPdfDate(item.createdAt));
-  addLabelValue('Jenis Sidang', item.sessionType);
-  addLabelValue('Bidang', item.field);
-  addLabelValue('Metode', item.method);
-  addLabelValue('Mode Penguji', item.examinerMode);
-  addLabelValue('Durasi', `${item.sessionLength || 'Normal'} (${item.questionCount} Pertanyaan)`);
-
-  addSectionTitle('Ringkasan Evaluasi');
-  addWrappedText(item.summary || 'Simulasi selesai.', {
-    size: 10,
-    color: [51, 65, 85],
-    lineHeight: 5.5,
-  });
-
-  if (item.strengths?.length) {
-    addSectionTitle('Kekuatan');
-    item.strengths.forEach((strength, index) => {
-      addWrappedText(`${index + 1}. ${strength}`, {
-        size: 10,
-        color: [22, 101, 52],
-        lineHeight: 5.5,
-      });
-    });
-  }
-
-  if (item.weaknesses?.length) {
-    addSectionTitle('Area Perbaikan');
-    item.weaknesses.forEach((weakness, index) => {
-      addWrappedText(`${index + 1}. ${weakness}`, {
-        size: 10,
-        color: [154, 52, 18],
-        lineHeight: 5.5,
-      });
-    });
-  }
-
-  if (item.nextPractice?.length) {
-    addSectionTitle('Saran Latihan Selanjutnya');
-    item.nextPractice.forEach((practice, index) => {
-      addWrappedText(`${index + 1}. ${practice}`, {
-        size: 10,
-        color: [30, 64, 175],
-        lineHeight: 5.5,
-      });
-    });
-  }
-
-  const groups = buildTranscriptPdfGroups(item.transcript);
-
-  addSectionTitle('Rekaman Percakapan Tanya-Jawab');
-
-  if (groups.length === 0) {
-    addWrappedText('Tidak ada data transkrip pada riwayat ini.', {
-      size: 10,
-      color: [100, 116, 139],
-    });
-  }
-
-  groups.forEach((group) => {
-    ensureSpace(24);
-
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(margin, y, contentWidth, 11, 3, 3, 'FD');
+    drawRoundedCard(margin, y, contentWidth, cardHeight, fill, colors.border);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.setTextColor(37, 99, 235);
-    doc.text(`PERTANYAAN ${group.number}`, margin + 4, y + 7);
+    setColor(color);
+    doc.text(title, margin + 5, y + 8);
+
+    y += 14;
+
+    list.forEach((text, index) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setColor(color);
+
+      const lines = split(`${index + 1}. ${text}`, contentWidth - 14, 9);
+      doc.text(lines, margin + 6, y);
+      y += lines.length * 5 + 1.5;
+    });
+
+    y += 8;
+  };
+
+  const addTranscriptGroup = (group: TranscriptPdfGroup) => {
+    ensureSpace(36);
+
+    const headerHeight = 12;
+    drawRoundedCard(margin, y, contentWidth, headerHeight, colors.soft, colors.border);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    setColor(colors.blue);
+    doc.text(`PERTANYAAN ${group.number}`, margin + 5, y + 7.7);
 
     if (typeof group.score === 'number') {
-      doc.setTextColor(21, 128, 61);
-      doc.text(`Skor: ${group.score}`, pageWidth - margin - 24, y + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      setColor(colors.green);
+      doc.text(`Skor: ${group.score}`, pageWidth - margin - 24, y + 7.7);
     }
 
-    y += 16;
+    y += headerHeight + 5;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text('Penguji', margin, y);
-    y += 5;
-    addWrappedText(group.question || '-', {
-      size: 10,
-      color: [15, 23, 42],
-      lineHeight: 5.3,
-      indent: 2,
-    });
+    const addTranscriptBlock = (
+      label: string,
+      text: string,
+      tone: 'neutral' | 'blue' | 'green'
+    ) => {
+      const labelColor =
+        tone === 'blue' ? colors.blueDark : tone === 'green' ? colors.green : colors.muted;
+      const fill =
+        tone === 'blue' ? colors.blueSoft : tone === 'green' ? colors.greenSoft : colors.white;
+
+      const lines = split(text || '-', contentWidth - 12, 9.2);
+      const height = Math.max(20, 11 + lines.length * 5);
+
+      ensureSpace(height + 5);
+      drawRoundedCard(margin, y, contentWidth, height, fill, colors.border);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      setColor(labelColor);
+      doc.text(label.toUpperCase(), margin + 5, y + 6);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.2);
+      setColor(tone === 'green' ? colors.green : tone === 'blue' ? colors.blueDark : colors.slate);
+      doc.text(lines, margin + 5, y + 12);
+
+      y += height + 4;
+    };
+
+    addTranscriptBlock('Penguji', group.question || '-', 'neutral');
+    addTranscriptBlock('Anda', group.answer || '-', 'blue');
+    addTranscriptBlock('Umpan Balik', group.feedback || '-', 'green');
 
     y += 2;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(37, 99, 235);
-    doc.text('Anda', margin, y);
-    y += 5;
-    addWrappedText(group.answer || '-', {
-      size: 10,
-      color: [30, 64, 175],
-      lineHeight: 5.3,
-      indent: 2,
-    });
+  };
 
-    y += 2;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(22, 101, 52);
-    doc.text('Umpan Balik', margin, y);
-    y += 5;
-    addWrappedText(group.feedback || '-', {
-      size: 10,
-      color: [22, 101, 52],
-      lineHeight: 5.3,
-      indent: 2,
-    });
+  // Header
+  doc.setFillColor(...colors.blue);
+  doc.rect(0, 0, pageWidth, 30, 'F');
 
-    y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  setColor(colors.white);
+  doc.text('Transkrip Simulasi RuangUji', margin, 13);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Hasil latihan tanya-jawab sidang akademik', margin, 21);
+
+  y = 42;
+
+  // Score summary card
+  const scoreCardHeight = 26;
+  drawRoundedCard(margin, y, contentWidth, scoreCardHeight, colors.white, colors.blue);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  setColor(colors.blue);
+  doc.text(String(item.score ?? 0), margin + 8, y + 17);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  setColor(colors.slate);
+  doc.text('Skor Akhir', margin + 32, y + 10);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.8);
+  setColor(colors.muted);
+  const summaryLines = split(item.summary || 'Simulasi selesai.', contentWidth - 42, 8.8).slice(0, 2);
+  doc.text(summaryLines, margin + 32, y + 17);
+
+  y += scoreCardHeight + 14;
+
+  addSectionTitle('Informasi Simulasi');
+  addInfoGrid();
+
+  addSectionTitle('Ringkasan Evaluasi');
+  addParagraph(item.summary || 'Simulasi selesai.', {
+    size: 9.5,
+    color: colors.slate,
+    lineHeight: 5,
   });
 
-  // Footer page number
-  const totalPages = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i += 1) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`RuangUji • Halaman ${i} dari ${totalPages}`, margin, pageHeight - 8);
+  y += 4;
+
+  addSmallCardList('Kekuatan', item.strengths, 'green');
+  addSmallCardList('Area Perbaikan', item.weaknesses, 'orange');
+  addSmallCardList('Saran Latihan Selanjutnya', item.nextPractice, 'blue');
+
+  const groups = buildTranscriptPdfGroups(item.transcript);
+
+  addSectionTitle(
+    'Rekaman Percakapan Tanya-Jawab',
+    'Berisi urutan pertanyaan penguji, jawaban Anda, dan umpan balik yang diberikan selama sesi.'
+  );
+
+  if (groups.length === 0) {
+    addParagraph('Tidak ada data transkrip pada riwayat ini.', {
+      size: 9.5,
+      color: colors.muted,
+    });
+  } else {
+    groups.forEach(addTranscriptGroup);
   }
+
+  addFooter();
 
   const filename = `transkrip-ruanguji-${sanitizePdfFilename(item.title)}.pdf`;
   doc.save(filename);

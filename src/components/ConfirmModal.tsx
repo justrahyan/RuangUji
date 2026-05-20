@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, HelpCircle } from 'lucide-react';
+import { AlertTriangle, HelpCircle } from 'lucide-react';
 
 interface ConfirmModalProps {
   isOpen: boolean;

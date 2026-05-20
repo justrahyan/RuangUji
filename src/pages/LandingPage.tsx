@@ -4,7 +4,7 @@ import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
 import {
   Bot, FileText, Mic, MessageSquare, LineChart,
-  History, ChevronRight, BookOpen, ChevronDown, ChevronUp
+  History, ChevronRight, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function LandingPage() {

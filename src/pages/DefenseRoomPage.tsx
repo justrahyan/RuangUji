@@ -67,8 +67,8 @@ export default function DefenseRoomPage() {
 
   // States
   const [orbState, setOrbState] = useState<'idle' | 'speaking' | 'listening' | 'thinking'>('idle');
-  const [spokenText, setSpokenText] = useState('');
-  const [spokenMode, setSpokenMode] = useState<'question' | 'feedback' | 'listening'>('question');
+  const [, setSpokenText] = useState('');
+  const [, setSpokenMode] = useState<'question' | 'feedback' | 'listening'>('question');
   const [voiceEnabled, setVoiceEnabled] = useState(localStorage.getItem('ruanguji_voice_muted') !== 'true');
   const [voiceProfile, setVoiceProfile] = useState(localStorage.getItem('ruanguji_voice_profile') || 'Formal');
   const [hasFeedback, setHasFeedback] = useState(false);
@@ -81,7 +81,7 @@ export default function DefenseRoomPage() {
   const [showEndModal, setShowEndModal] = useState(false);
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [detailModalContent, setDetailModalContent] = useState({ title: '', content: '' });
+  const [detailModalContent,] = useState({ title: '', content: '' });
 
   const middleScrollRef = useRef<HTMLDivElement>(null);
 
@@ -96,7 +96,7 @@ export default function DefenseRoomPage() {
 
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isEvaluatingAnswer, setIsEvaluatingAnswer] = useState(false);
-  const [aiStatus, setAiStatus] = useState<'idle' | 'generating-question' | 'evaluating' | 'fallback' | 'error'>('idle');
+  const [, setAiStatus] = useState<'idle' | 'generating-question' | 'evaluating' | 'fallback' | 'error'>('idle');
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
   const toggleItemExpand = (id: string) => {
@@ -108,11 +108,6 @@ export default function DefenseRoomPage() {
 
   const questionRequestIdRef = useRef(0);
   const hasUserAnsweredRef = useRef(false);
-
-  const openDetailModal = (title: string, content: string) => {
-    setDetailModalContent({ title, content });
-    setDetailModalOpen(true);
-  };
 
   useEffect(() => {
     const active = getActiveSession();
@@ -162,12 +157,6 @@ export default function DefenseRoomPage() {
     if (!newVal) stopSpeaking();
   };
 
-  const handleReplay = () => {
-    stopSpeaking();
-    setOrbState('speaking');
-    speakText(spokenText, () => setOrbState('speaking'), () => setOrbState('idle'));
-  };
-
   const addTranscript = (item: TranscriptItem, currentSession: DefenseSession) => {
     const updated = { ...currentSession, transcript: [...currentSession.transcript, item] };
     setSession(updated);
@@ -212,7 +201,6 @@ export default function DefenseRoomPage() {
 
       if (!res.ok) throw new Error('API fallback');
       const data = await res.json();
-      console.log('[QUESTION SOURCE]', data.provider, data.question);
       qText = data.question;
       category = data.category || 'umum';
       if (data.provider === 'local-fallback') {
@@ -255,7 +243,7 @@ export default function DefenseRoomPage() {
       createdAt: new Date().toISOString()
     };
 
-    const updated = addTranscript(qItem, currentSession);
+    addTranscript(qItem, currentSession);
     setSpokenText(qText);
     setIsGeneratingQuestion(false);
     setAiStatus(errorOccurred ? 'error' : source === 'local-fallback' ? 'fallback' : 'idle');
@@ -519,7 +507,6 @@ export default function DefenseRoomPage() {
 
   const { research, currentQuestionIndex } = session;
   const currentQ = currentQuestionIndex + 1;
-  const progressPercent = Math.min((currentQ / research.questionCount) * 100, 100);
 
   const orbStateLabel = isGeneratingQuestion ? 'Menyiapkan pertanyaan...' :
     isEvaluatingAnswer ? 'Menganalisis jawaban...' :

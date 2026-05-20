@@ -1,3 +1,6 @@
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -8,6 +11,9 @@ import { generateQuestion, evaluateAnswer, generateFinalEvaluation } from './src
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Document Extraction Helpers
 
@@ -225,5 +231,41 @@ app.post('/api/ai/final-evaluation', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
+// Serve Vite production build
+const distPath = path.resolve(__dirname, 'dist');
+const indexPath = path.join(distPath, 'index.html');
+
+console.log('[Static] distPath:', distPath);
+console.log('[Static] index exists:', fs.existsSync(indexPath));
+
+app.use(express.static(distPath));
+
+const sendIndex = (req: express.Request, res: express.Response) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({
+      ok: false,
+      error: 'API route not found',
+    });
+  }
+
+  if (!fs.existsSync(indexPath)) {
+    return res
+      .status(500)
+      .send('Production build tidak ditemukan. Jalankan npm run build terlebih dahulu.');
+  }
+
+  return res.sendFile(indexPath);
+};
+
+// Root route wajib, supaya http://localhost:3000 tidak jatuh ke 404
+app.get('/', sendIndex);
+
+// Fallback untuk React Router: /setup, /history, /defense, dll.
+// Ini format wildcard yang aman untuk Express versi baru.
+app.get('/*splat', sendIndex);
+
+const PORT = Number(process.env.PORT) || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});

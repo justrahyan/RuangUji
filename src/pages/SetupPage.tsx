@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
-import { ArrowLeft, ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
 import type { ExaminerMode, SessionLength, ResearchProfile, DefenseSession } from '../types';
 import { saveLatestResearch, saveActiveSession } from '../lib/storage';
 import SectionHeader from '../components/SectionHeader';

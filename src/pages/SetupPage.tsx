@@ -493,23 +493,67 @@ export default function SetupPage() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem' }}>Durasi Sesi</label>
-                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        marginBottom: '1rem',
+                      }}
+                    >
+                      Durasi Sesi
+                    </label>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '0.5rem',
+                        width: '100%',
+                      }}
+                    >
                       {lengthOptions.map(opt => (
                         <button
                           key={opt.id}
                           onClick={() => setSessionLength(opt.id)}
                           style={{
-                            padding: '0.75rem 1.5rem', cursor: 'pointer', transition: 'all 0.2s',
+                            width: '100%',
+                            minWidth: 0,
+                            padding: '0.7rem 0.5rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
                             border: sessionLength === opt.id ? 'none' : '1px solid var(--border-color)',
                             backgroundColor: sessionLength === opt.id ? 'var(--primary-blue)' : 'var(--white)',
                             color: sessionLength === opt.id ? 'var(--white)' : 'var(--text-primary)',
-                            borderRadius: '0.5rem', fontWeight: 600,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center'
+                            borderRadius: '0.5rem',
+                            fontWeight: 600,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            textAlign: 'center',
+                            gap: '0.2rem',
                           }}
                         >
-                          <span style={{ fontSize: '1rem' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{opt.count} Pertanyaan</span>
+                          <span
+                            style={{
+                              fontSize: 'clamp(0.78rem, 2.8vw, 1rem)',
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {opt.label}
+                          </span>
+
+                          <span
+                            style={{
+                              fontSize: 'clamp(0.62rem, 2.3vw, 0.75rem)',
+                              opacity: 0.8,
+                              lineHeight: 1.2,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {opt.count} Pertanyaan
+                          </span>
                         </button>
                       ))}
                     </div>

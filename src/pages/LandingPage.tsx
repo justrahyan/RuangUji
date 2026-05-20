@@ -205,39 +205,43 @@ export default function LandingPage() {
       </section>
 
       {/* Simulator Preview Section */}
-      <section className="section" style={{ backgroundColor: 'var(--white)', borderTop: '1px solid var(--border-color)', padding: '5rem 0' }}>
+      <section className="section simulator-preview-section">
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <SectionHeader
             label="Preview Simulator"
             title="Simulasi Pertanyaan & Feedback"
-            subtitle="Dapatkan gambaran nyata pertanyaan kritis dari dosen penguji virtual berserta masukan langsung untuk menyempurnakan jawaban Anda."
+            subtitle="Dapatkan gambaran nyata pertanyaan kritis dari dosen penguji virtual beserta masukan langsung untuk menyempurnakan jawaban Anda."
             centered
           />
 
           <div className="fade-up" style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-            <div className="card soft-shadow" style={{ maxWidth: '780px', width: '100%', padding: '2rem', textAlign: 'left', border: '1px solid var(--border-color)', backgroundColor: 'var(--white)', borderRadius: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem', marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: 'var(--blue-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="card soft-shadow simulator-preview-card">
+              <div className="simulator-preview-head">
+                <div className="simulator-preview-user">
+                  <div className="simulator-preview-icon">
                     <Bot size={20} color="var(--primary-blue)" />
                   </div>
+
                   <div>
-                    <h4 style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>Pertanyaan Penguji</h4>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Mode: Kritis</p>
+                    <h4>Pertanyaan Penguji</h4>
+                    <p>Mode: Kritis</p>
                   </div>
                 </div>
-                <span className="badge" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.8125rem' }}>Skor: 85</span>
+
+                <span className="badge simulator-score-badge">Skor: 85</span>
               </div>
-              <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '1rem', border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-                <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+
+              <div className="simulator-question-box">
+                <p>
                   "Mengapa Anda merasa metode forward chaining lebih unggul dibanding certainty factor dalam menangani ketidakpastian data pada penelitian ini?"
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', padding: '1rem', border: '1px solid var(--blue-border)', borderRadius: '1rem', backgroundColor: 'var(--blue-soft)' }}>
-                <MessageSquare size={18} color="var(--primary-blue)" style={{ flexShrink: 0, marginTop: '0.125rem' }} />
+
+              <div className="simulator-feedback-box">
+                <MessageSquare size={18} color="var(--primary-blue)" className="simulator-feedback-icon" />
                 <div>
-                  <h5 style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--primary-blue)', marginBottom: '0.25rem' }}>Feedback Evaluasi</h5>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <h5>Feedback Evaluasi</h5>
+                  <p>
                     Argumen logis, namun perkuat dengan landasan perbandingan teoritis atau batasan memori perangkat agar alasan implementasi lebih kokoh.
                   </p>
                 </div>
@@ -334,12 +338,22 @@ export default function LandingPage() {
             </div>
 
             {/* Explanation Card */}
-            <div className="card soft-shadow fade-up" key={activeMode} style={{ maxWidth: '720px', width: '100%', padding: '2rem', backgroundColor: 'var(--white)', border: '1px solid var(--border-color)', borderRadius: '24px' }}>
+            <div
+              className="card soft-shadow fade-up examiner-mode-card"
+              key={activeMode}
+              style={{
+                maxWidth: '720px',
+                width: '100%',
+                backgroundColor: 'var(--white)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '24px'
+              }}
+            >
               <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary-blue)', marginBottom: '0.75rem' }}>{activeModeData.title}</h3>
               <p style={{ color: 'var(--text-primary)', fontSize: '0.9375rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>{activeModeData.desc}</p>
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.5rem' }}>
-                <span style={{ fontWeight: 700 }}>Paling cocok untuk:</span>
-                <span>{activeModeData.target}</span>
+              <div className="examiner-target-row">
+                <span>Paling cocok untuk:</span>
+                <p>{activeModeData.target}</p>
               </div>
             </div>
           </div>
@@ -409,28 +423,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      <style>{`
-        .floating-pill {
-          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .floating-pill:hover {
-          transform: translateY(-4px) scale(1.05) !important;
-          box-shadow: 0 20px 25px -5px rgba(37, 99, 235, 0.12), 0 10px 10px -5px rgba(37, 99, 235, 0.04) !important;
-          border-color: var(--primary-blue) !important;
-        }
-        .examiner-tabs {
-          margin: 0 auto;
-        }
-        .examiner-tabs button {
-          scroll-snap-align: center;
-        }
-        @media (max-width: 768px) {
-          .examiner-tabs {
-            justify-content: flex-start !important;
-            padding-inline: 0.25rem;
-          }
-        }
-      `}</style>
     </PageShell>
   );
 }

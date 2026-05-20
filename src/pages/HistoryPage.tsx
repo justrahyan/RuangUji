@@ -5,9 +5,315 @@ import SectionHeader from '../components/SectionHeader';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
 import EvaluationResultLayout from '../components/EvaluationResultLayout';
-import { History, ArrowRight, ArrowLeft, Star, Trash2, CalendarDays, BrainCircuit, BarChart3, Award } from 'lucide-react';
+import { History, ArrowRight, ArrowLeft, Star, Trash2, CalendarDays, BrainCircuit, BarChart3, Award, Download } from 'lucide-react';
 import { getHistory, deleteHistoryItem, clearHistory } from '../lib/storage';
 import type { HistoryItem } from '../types';
+import jsPDF from 'jspdf';
+
+type TranscriptPdfGroup = {
+  number: number;
+  question?: string;
+  answer?: string;
+  feedback?: string;
+  score?: number;
+};
+
+function sanitizePdfFilename(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/gi, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 80) || 'transkrip-ruanguji';
+}
+
+function formatPdfDate(value: string) {
+  return new Date(value).toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function buildTranscriptPdfGroups(transcript: HistoryItem['transcript'] = []): TranscriptPdfGroup[] {
+  const groups: TranscriptPdfGroup[] = [];
+
+  transcript.forEach((item) => {
+    if (item.type === 'question') {
+      groups.push({
+        number: groups.length + 1,
+        question: item.content,
+      });
+      return;
+    }
+
+    if (item.type === 'answer') {
+      const target = [...groups].reverse().find((group) => !group.answer);
+      if (target) target.answer = item.content;
+      return;
+    }
+
+    if (item.type === 'feedback') {
+      const target = [...groups].reverse().find((group) => !group.feedback);
+      if (target) {
+        target.feedback = item.content;
+        target.score = item.score;
+      }
+    }
+  });
+
+  return groups;
+}
+
+function downloadTranscriptPdf(item: HistoryItem) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const contentWidth = pageWidth - margin * 2;
+  let y = 18;
+
+  const ensureSpace = (height = 12) => {
+    if (y + height > pageHeight - 18) {
+      doc.addPage();
+      y = 18;
+    }
+  };
+
+  const addWrappedText = (
+    text: string,
+    options?: {
+      size?: number;
+      style?: 'normal' | 'bold';
+      color?: [number, number, number];
+      lineHeight?: number;
+      indent?: number;
+    }
+  ) => {
+    const size = options?.size ?? 10;
+    const style = options?.style ?? 'normal';
+    const color = options?.color ?? [15, 23, 42];
+    const lineHeight = options?.lineHeight ?? 5.5;
+    const indent = options?.indent ?? 0;
+
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
+
+    const lines = doc.splitTextToSize(text || '-', contentWidth - indent);
+
+    lines.forEach((line: string) => {
+      ensureSpace(lineHeight + 2);
+      doc.text(line, margin + indent, y);
+      y += lineHeight;
+    });
+  };
+
+  const addLabelValue = (label: string, value?: string | number | null) => {
+    if (value === undefined || value === null || String(value).trim() === '') return;
+
+    ensureSpace(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(label, margin, y);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    const valueLines = doc.splitTextToSize(String(value), contentWidth - 46);
+    doc.text(valueLines, margin + 46, y);
+    y += Math.max(7, valueLines.length * 5);
+  };
+
+  const addSectionTitle = (title: string) => {
+    ensureSpace(14);
+    y += 3;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(37, 99, 235);
+    doc.text(title, margin, y);
+    y += 7;
+  };
+
+  // Cover header
+  doc.setFillColor(37, 99, 235);
+  doc.rect(0, 0, pageWidth, 34, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Transkrip Simulasi RuangUji', margin, 17);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Dokumen hasil latihan tanya-jawab sidang akademik', margin, 25);
+
+  y = 45;
+
+  // Score card
+  doc.setDrawColor(37, 99, 235);
+  doc.setLineWidth(0.8);
+  doc.roundedRect(margin, y, contentWidth, 28, 4, 4);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(37, 99, 235);
+  doc.text(String(item.score ?? 0), margin + 8, y + 18);
+
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Skor Akhir', margin + 31, y + 11);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(item.summary || 'Simulasi selesai.', margin + 31, y + 18, {
+    maxWidth: contentWidth - 38,
+  });
+
+  y += 40;
+
+  addSectionTitle('Informasi Simulasi');
+  addLabelValue('Judul', item.title);
+  addLabelValue('Tanggal', formatPdfDate(item.createdAt));
+  addLabelValue('Jenis Sidang', item.sessionType);
+  addLabelValue('Bidang', item.field);
+  addLabelValue('Metode', item.method);
+  addLabelValue('Mode Penguji', item.examinerMode);
+  addLabelValue('Durasi', `${item.sessionLength || 'Normal'} (${item.questionCount} Pertanyaan)`);
+
+  addSectionTitle('Ringkasan Evaluasi');
+  addWrappedText(item.summary || 'Simulasi selesai.', {
+    size: 10,
+    color: [51, 65, 85],
+    lineHeight: 5.5,
+  });
+
+  if (item.strengths?.length) {
+    addSectionTitle('Kekuatan');
+    item.strengths.forEach((strength, index) => {
+      addWrappedText(`${index + 1}. ${strength}`, {
+        size: 10,
+        color: [22, 101, 52],
+        lineHeight: 5.5,
+      });
+    });
+  }
+
+  if (item.weaknesses?.length) {
+    addSectionTitle('Area Perbaikan');
+    item.weaknesses.forEach((weakness, index) => {
+      addWrappedText(`${index + 1}. ${weakness}`, {
+        size: 10,
+        color: [154, 52, 18],
+        lineHeight: 5.5,
+      });
+    });
+  }
+
+  if (item.nextPractice?.length) {
+    addSectionTitle('Saran Latihan Selanjutnya');
+    item.nextPractice.forEach((practice, index) => {
+      addWrappedText(`${index + 1}. ${practice}`, {
+        size: 10,
+        color: [30, 64, 175],
+        lineHeight: 5.5,
+      });
+    });
+  }
+
+  const groups = buildTranscriptPdfGroups(item.transcript);
+
+  addSectionTitle('Rekaman Percakapan Tanya-Jawab');
+
+  if (groups.length === 0) {
+    addWrappedText('Tidak ada data transkrip pada riwayat ini.', {
+      size: 10,
+      color: [100, 116, 139],
+    });
+  }
+
+  groups.forEach((group) => {
+    ensureSpace(24);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, contentWidth, 11, 3, 3, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(37, 99, 235);
+    doc.text(`PERTANYAAN ${group.number}`, margin + 4, y + 7);
+
+    if (typeof group.score === 'number') {
+      doc.setTextColor(21, 128, 61);
+      doc.text(`Skor: ${group.score}`, pageWidth - margin - 24, y + 7);
+    }
+
+    y += 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Penguji', margin, y);
+    y += 5;
+    addWrappedText(group.question || '-', {
+      size: 10,
+      color: [15, 23, 42],
+      lineHeight: 5.3,
+      indent: 2,
+    });
+
+    y += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(37, 99, 235);
+    doc.text('Anda', margin, y);
+    y += 5;
+    addWrappedText(group.answer || '-', {
+      size: 10,
+      color: [30, 64, 175],
+      lineHeight: 5.3,
+      indent: 2,
+    });
+
+    y += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(22, 101, 52);
+    doc.text('Umpan Balik', margin, y);
+    y += 5;
+    addWrappedText(group.feedback || '-', {
+      size: 10,
+      color: [22, 101, 52],
+      lineHeight: 5.3,
+      indent: 2,
+    });
+
+    y += 6;
+  });
+
+  // Footer page number
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i += 1) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`RuangUji • Halaman ${i} dari ${totalPages}`, margin, pageHeight - 8);
+  }
+
+  const filename = `transkrip-ruanguji-${sanitizePdfFilename(item.title)}.pdf`;
+  doc.save(filename);
+}
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -60,42 +366,83 @@ export default function HistoryPage() {
 
     return (
       <PageShell>
-        <EvaluationResultLayout
-          title="Detail Evaluasi Simulasi"
-          subtitle={selectedItem.title}
-          score={selectedItem.score}
-          summary={selectedItem.summary || 'Simulasi selesai.'}
-          strengths={selectedItem.strengths || ['Penyelesaian sesi tepat waktu']}
-          weaknesses={selectedItem.weaknesses || ['Perlu analisis riwayat lebih lanjut']}
-          nextPractice={selectedItem.nextPractice || ['Coba mode penguji lain']}
-          transcript={selectedItem.transcript || []}
-          showTranscript
-          topAction={
-            <button
-              onClick={() => setSelectedItem(null)}
-              className="btn btn-secondary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '0.75rem', backgroundColor: 'var(--white)' }}
-            >
-              <ArrowLeft size={16} /> Kembali ke Riwayat
-            </button>
-          }
-          badges={
-            <>
-              <span className="badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', textTransform: 'none' }}>
-                <CalendarDays size={12} /> {createdDate}
-              </span>
-              <span className="badge" style={{ backgroundColor: 'var(--blue-soft)', color: 'var(--primary-blue)', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', textTransform: 'capitalize' }}>
-                <BrainCircuit size={12} /> Mode: {selectedItem.examinerMode}
-              </span>
-            </>
-          }
-          metadata={[
-            { label: 'Jenis Sidang', value: selectedItem.sessionType },
-            { label: 'Bidang', value: selectedItem.field },
-            { label: 'Metode', value: selectedItem.method },
-            { label: 'Durasi', value: `${selectedItem.sessionLength || 'Normal'} (${selectedItem.questionCount} Pertanyaan)` },
-          ]}
-        />
+        <>
+          <EvaluationResultLayout
+            title="Detail Evaluasi Simulasi"
+            subtitle={selectedItem.title}
+            score={selectedItem.score}
+            summary={selectedItem.summary || 'Simulasi selesai.'}
+            strengths={selectedItem.strengths || ['Penyelesaian sesi tepat waktu']}
+            weaknesses={selectedItem.weaknesses || ['Perlu analisis riwayat lebih lanjut']}
+            nextPractice={selectedItem.nextPractice || ['Coba mode penguji lain']}
+            transcript={selectedItem.transcript || []}
+            showTranscript
+            topAction={
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="btn btn-secondary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '0.75rem',
+                    backgroundColor: 'var(--white)',
+                  }}
+                >
+                  <ArrowLeft size={16} /> Kembali ke Riwayat
+                </button>
+
+                <button
+                  onClick={() => {
+                    downloadTranscriptPdf(selectedItem);
+                    setToastMessage('Transkrip PDF berhasil dibuat.');
+                    setToastOpen(true);
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '0.75rem',
+                  }}
+                >
+                  <Download size={16} /> Download Transkrip PDF
+                </button>
+              </div>
+            }
+            badges={
+              <>
+                <span className="badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', textTransform: 'none' }}>
+                  <CalendarDays size={12} /> {createdDate}
+                </span>
+                <span className="badge" style={{ backgroundColor: 'var(--blue-soft)', color: 'var(--primary-blue)', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', textTransform: 'capitalize' }}>
+                  <BrainCircuit size={12} /> Mode: {selectedItem.examinerMode}
+                </span>
+              </>
+            }
+            metadata={[
+              { label: 'Jenis Sidang', value: selectedItem.sessionType },
+              { label: 'Bidang', value: selectedItem.field },
+              { label: 'Metode', value: selectedItem.method },
+              { label: 'Durasi', value: `${selectedItem.sessionLength || 'Normal'} (${selectedItem.questionCount} Pertanyaan)` },
+            ]}
+          />
+
+          <Toast isOpen={toastOpen} message={toastMessage} onClose={() => setToastOpen(false)} />
+        </>
       </PageShell>
     );
   }

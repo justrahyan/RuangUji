@@ -1,464 +1,478 @@
-import { generateQuestion, evaluateAnswer, generateFinalEvaluation } from '../src/lib/localEngine.js';
+type GeminiPart = {
+  text: string;
+};
 
-function safeJsonParse(text: string): any {
-  let cleaned = text.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
-  }
-  
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
-    throw new Error(`Invalid JSON format: JSON object boundaries not found. Content: "${cleaned.substring(0, 100)}..."`);
-  }
-  
-  cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiPart[];
+    };
+  }>;
+};
+
+function safeText(value: unknown, fallback = "-") {
+  if (typeof value !== "string") return fallback;
+  const cleaned = value.trim();
+  return cleaned || fallback;
+}
+
+function truncateText(text: string | undefined, max = 28000) {
+  if (!text) return "";
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  return cleaned.slice(0, max) + "\n\n[DOKUMEN DIPOTONG KARENA TERLALU PANJANG]";
+}
+
+function extractJson(text: string) {
+  const cleaned = text
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
   try {
     return JSON.parse(cleaned);
-  } catch (error: any) {
-    throw new Error(`Failed to parse JSON: ${error.message}. Cleaned content: "${cleaned.substring(0, 200)}..."`);
-  }
-}
-
-function isProviderUnavailableError(error: any): boolean {
-  if (!error) return false;
-  const msg = String(error.message || error).toLowerCase();
-  const keywords = [
-    '429',
-    '500',
-    '502',
-    '503',
-    '504',
-    'quota',
-    'high demand',
-    'unavailable',
-    'resource_exhausted',
-    'rate limit',
-    'invalid json',
-    'empty text',
-    'aborted',
-    'timeout'
-  ];
-  return keywords.some(kw => msg.includes(kw));
-}
-
-// Helper to wrap fetch with a 20-second timeout
-async function fetchWithTimeout(url: string, options: any, timeoutMs = 20000): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    return response;
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs / 1000} seconds`);
+  } catch {
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first !== -1 && last !== -1 && last > first) {
+      const sliced = cleaned.slice(first, last + 1);
+      return JSON.parse(sliced);
     }
-    throw err;
-  } finally {
-    clearTimeout(id);
+    throw new Error("Gemini response is not valid JSON");
   }
+}
+
+async function callGemini(prompt: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY belum diatur di .env");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.95,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 1400,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  const raw = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`Gemini HTTP Error ${res.status}: ${raw}`);
+  }
+
+  const data = JSON.parse(raw) as GeminiResponse;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    throw new Error("Gemini response kosong.");
+  }
+
+  return extractJson(text);
+}
+
+function buildResearchContext(research: any) {
+  const documentContext = truncateText(research?.documentText, 28000);
+  const documentPreview = truncateText(research?.documentPreview, 3500);
+
+  return `
+[KONTEKS PENELITIAN]
+
+Judul Penelitian:
+${safeText(research?.title)}
+
+Jenis Sidang / Presentasi:
+${safeText(research?.sessionType)}
+
+Bidang / Topik:
+${safeText(research?.field)}
+
+Kata Kunci / Fokus Kajian:
+${safeText(research?.keywords)}
+
+Pendekatan Penelitian:
+${safeText(research?.researchApproach)}
+
+Metode / Teknik Utama:
+${safeText(research?.method)}
+
+Ringkasan / Abstrak Manual:
+${safeText(research?.abstract)}
+
+Hal yang Ingin Dilatih / Dikhawatirkan:
+${safeText(research?.concern)}
+
+Dokumen Diunggah:
+${safeText(research?.documentName)}
+
+Cuplikan Dokumen:
+${documentPreview || "-"}
+
+Isi Dokumen Lengkap yang Berhasil Diekstrak:
+${documentContext || "Tidak ada dokumen tambahan."}
+
+[CATATAN PENTING]
+Jika ada isi dokumen lengkap, gunakan bagian itu sebagai konteks utama tambahan. Jangan hanya membaca abstrak manual.
+`.trim();
+}
+
+function buildPreviousQuestionContext(previousQuestions: string[] = []) {
+  if (!previousQuestions.length) return "Belum ada pertanyaan sebelumnya.";
+  return previousQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n");
+}
+
+function normalizeQuestionMode(mode: string) {
+  const map: Record<string, string> = {
+    santai: "pertanyaan ramah dan tidak terlalu menekan, tetapi tetap bervariasi serta mengikuti fokus pertanyaan ke-n; jangan hanya bertanya alasan memilih topik",
+    kritis: "pertanyaan tajam, objektif, dan menguji konsistensi argumen",
+    killer: "pertanyaan sulit, menekan, dan menguji kelemahan penelitian",
+    metodologi: "pertanyaan tentang desain penelitian, tahapan, validitas, dan alasan metode",
+    statistik: "pertanyaan tentang data, analisis, instrumen, hasil, atau pembuktian; hanya bahas metrik statistik jika memang relevan dengan penelitian",
+    novelty: "pertanyaan tentang kebaruan, kontribusi, gap penelitian, dan pembeda dari penelitian sebelumnya",
+    implementasi: "pertanyaan tentang penerapan hasil, alur pelaksanaan, dampak praktis, dan realisasi penelitian; jangan otomatis menganggap ini sistem/software",
+  };
+
+  return map[mode] || map.kritis;
+}
+
+function getQuestionFocusPlan(mode: string, questionIndex: number) {
+  const plans: Record<string, string[]> = {
+    santai: [
+      "pemahaman umum terhadap topik dan alasan memilih penelitian",
+      "masalah utama, urgensi, dan latar belakang penelitian",
+      "alasan memilih metode atau pendekatan penelitian",
+      "alur penelitian dari data/proses awal sampai hasil",
+      "hasil utama, kontribusi, dan manfaat praktis penelitian",
+      "batasan penelitian dan bagian yang masih bisa dikembangkan",
+      "kesiapan menjelaskan penelitian kepada orang non-ahli",
+      "refleksi pribadi terhadap kekuatan dan kelemahan penelitian",
+    ],
+    kritis: [
+      "konsistensi antara masalah, tujuan, metode, dan hasil",
+      "alasan ilmiah di balik keputusan penelitian",
+      "validitas data, asumsi, dan potensi bias",
+      "ketepatan metode dibanding alternatif lain",
+      "kekuatan bukti yang mendukung kesimpulan",
+      "kelemahan penelitian dan cara mengantisipasinya",
+      "kontribusi nyata dibanding penelitian sebelumnya",
+      "implikasi hasil jika diterapkan pada kondisi berbeda",
+    ],
+    killer: [
+      "titik paling lemah dari penelitian",
+      "kemungkinan kesalahan asumsi utama",
+      "kenapa metode yang dipilih tidak keliru",
+      "bagaimana jika hasil penelitian dipertanyakan",
+      "apakah kontribusi penelitian benar-benar baru",
+      "bagaimana membela hasil jika ada data yang tidak ideal",
+      "keterbatasan paling serius dan dampaknya",
+      "pertanyaan jebakan yang menguji pemahaman mendalam",
+    ],
+    metodologi: [
+      "desain penelitian dan alasan pemilihannya",
+      "tahapan penelitian dari awal sampai akhir",
+      "proses pengumpulan data atau sumber informasi",
+      "validitas, reliabilitas, triangulasi, atau kredibilitas data",
+      "alasan memilih metode dibanding metode alternatif",
+      "cara memastikan hasil tidak bias",
+      "keterbatasan metodologi",
+      "replikasi atau pengembangan metodologi",
+    ],
+    statistik: [
+      "jenis data dan alasan teknik analisis yang digunakan",
+      "validitas instrumen, kualitas data, atau kelayakan analisis",
+      "cara membaca hasil atau temuan secara objektif",
+      "pembuktian hasil sesuai pendekatan penelitian",
+      "risiko bias, outlier, atau ketidakseimbangan data jika relevan",
+      "interpretasi hasil dan hubungannya dengan tujuan penelitian",
+      "batasan data dan dampaknya pada kesimpulan",
+      "alasan hasil dapat dipercaya",
+    ],
+    novelty: [
+      "gap penelitian yang ingin dijawab",
+      "perbedaan penelitian dengan studi sebelumnya",
+      "kontribusi utama secara teori atau praktik",
+      "bagian paling baru dari penelitian",
+      "alasan kontribusi tersebut penting",
+      "potensi pengembangan penelitian berikutnya",
+      "keunikan konteks, data, metode, atau objek penelitian",
+      "nilai tambah penelitian bagi bidang terkait",
+    ],
+    implementasi: [
+      "bagaimana hasil penelitian dapat diterapkan",
+      "siapa pengguna/penerima manfaat dari hasil penelitian",
+      "alur penerapan hasil di lapangan atau konteks nyata",
+      "kendala penerapan dan cara mengatasinya",
+      "dampak praktis penelitian",
+      "batasan implementasi hasil",
+      "kebutuhan sumber daya atau kondisi pendukung",
+      "kelayakan hasil jika diterapkan di lingkungan berbeda",
+    ],
+  };
+
+  const list = plans[mode] || plans.kritis;
+  return list[questionIndex % list.length];
+}
+
+function getAntiRepeatInstruction(previousQuestions: string[] = []) {
+  if (!previousQuestions.length) {
+    return "Belum ada pertanyaan sebelumnya. Buat pertanyaan pertama yang relevan, tetapi jangan terlalu generik.";
+  }
+
+  return `
+Pertanyaan sebelumnya:
+${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
+
+Jangan mengulang pola, topik, atau maksud pertanyaan di atas.
+Jika pertanyaan sebelumnya sudah membahas pembagian data, jangan bertanya lagi tentang train/validation/test split.
+Jika pertanyaan sebelumnya sudah membahas metode evaluasi, jangan bertanya lagi tentang metrik evaluasi.
+Jika pertanyaan sebelumnya sudah membahas alasan memilih metode, lanjutkan ke aspek lain seperti validitas, batasan, kontribusi, atau implementasi.
+`.trim();
+}
+
+function buildRandomSeed() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export async function generateDefenseQuestionAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'gemini';
-  console.log(`[AI] question request started (provider=${provider})`);
-  
-  if (provider === 'local' || provider !== 'gemini') {
-    if (provider !== 'local') {
-      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
-    }
-    const localQuestion = generateQuestion(
-      payload.research,
-      payload.examinerMode,
-      payload.questionIndex,
-      payload.previousQuestions
-    );
-    console.log(`[AI] question success provider=local-fallback`);
-    return {
-      question: localQuestion,
-      category: "fallback",
-      reason: "Menggunakan mesin tanya-jawab lokal.",
-      provider: "local-fallback"
-    };
-  }
+  const research = payload?.research || {};
+  const examinerMode = payload?.examinerMode || research.examinerMode || "kritis";
+  const questionIndex = Number(payload?.questionIndex || 0);
+  const previousQuestions = payload?.previousQuestions || [];
 
-  try {
-    const researchApproach = payload.research.researchApproach || '';
-    const keywords = payload.research.keywords || '';
-    const documentPreview = payload.research.documentPreview || '';
+  const researchContext = buildResearchContext(research);
+  const previousContext = getAntiRepeatInstruction(previousQuestions);
+  const focusPlan = getQuestionFocusPlan(examinerMode, questionIndex);
+  const randomSeed = buildRandomSeed();
 
-    // Determine question-type guidance based on researchApproach
-    let approachGuidance = '';
-    const approachLower = researchApproach.toLowerCase();
-    if (approachLower.includes('kualitatif')) {
-      approachGuidance = `PENDEKATAN KUALITATIF: Fokuskan pertanyaan pada validitas data, pemilihan informan/narasumber, teknik triangulasi, proses analisis tematik, kredibilitas temuan, dan kontribusi penelitian terhadap pemahaman fenomena. JANGAN menanyakan metrik statistik, akurasi, atau dataset ML.`;
-    } else if (approachLower.includes('kuantitatif')) {
-      approachGuidance = `PENDEKATAN KUANTITATIF: Pertanyaan dapat mencakup variabel penelitian, instrumen pengumpulan data, validitas dan reliabilitas, teknik sampling, uji statistik, atau interpretasi hasil. Jika tidak ada ML atau model komputasi, JANGAN menanyakan akurasi model, overfitting, atau confusion matrix.`;
-    } else if (approachLower.includes('r&d') || approachLower.includes('pengembangan')) {
-      approachGuidance = `PENDEKATAN R&D/PENGEMBANGAN: Fokuskan pertanyaan pada analisis kebutuhan pengguna, desain produk/sistem, proses validasi ahli, uji coba lapangan, revisi produk, evaluasi kelayakan, dan kebermanfaatan produk bagi pengguna sasaran.`;
-    } else if (approachLower.includes('eksperimen')) {
-      approachGuidance = `PENDEKATAN EKSPERIMEN: Pertanyaan dapat mencakup desain eksperimen, kelompok kontrol/perlakuan, prosedur perlakuan, validitas internal, pengendalian variabel, dan interpretasi hasil uji hipotesis.`;
-    } else if (approachLower.includes('mixed') || approachLower.includes('campuran')) {
-      approachGuidance = `PENDEKATAN MIXED METHODS: Pertanyaan dapat mencakup integrasi data kuantitatif dan kualitatif, alasan pemilihan mixed methods, bagaimana kedua jenis data saling melengkapi, dan keandalan triangulasi.`;
-    } else if (approachLower.includes('literatur') || approachLower.includes('studi literatur')) {
-      approachGuidance = `PENDEKATAN STUDI LITERATUR: Pertanyaan dapat mencakup strategi pencarian literatur, kriteria inklusi/eksklusi sumber, sintesis temuan, celah penelitian yang ditemukan, dan kontribusi kajian literatur ini terhadap bidang ilmu.`;
-    }
+  const prompt = `
+Anda adalah dosen penguji akademik berbahasa Indonesia.
 
-    const prompt = `Anda berperan sebagai dosen penguji profesional, cerdas, dan kritis dalam sidang akademik di Indonesia.
-Tugas Anda adalah membuat 1 (satu) pertanyaan sidang yang spesifik, mendalam, dan relevan dengan penelitian mahasiswa berikut:
+Tugas:
+Buat SATU pertanyaan sidang yang relevan, natural, dan tidak template berdasarkan seluruh konteks penelitian mahasiswa.
 
-Profil Lengkap Penelitian Mahasiswa:
-- Jenis Sidang: ${payload.research.sessionType || 'Sidang Akhir'}
-- Judul Penelitian: ${payload.research.title}
-- Bidang / Topik: ${payload.research.field || 'Umum'}
-- Kata Kunci / Fokus Kajian: ${keywords || 'Tidak disediakan'}
-- Pendekatan Penelitian: ${researchApproach || 'Tidak disebutkan'}
-- Metode / Teknik Utama: ${payload.research.method}
-- Abstrak / Ringkasan: ${payload.research.abstract || 'Tidak disediakan'}
-- Kekhawatiran / Fokus Latihan Mahasiswa: ${payload.research.concern || 'Tidak ada'}
-${documentPreview ? `- Konteks Dokumen Tambahan (gunakan untuk memahami judul, metode, data, dan kontribusi penelitian jika abstrak kurang lengkap):
-${documentPreview.substring(0, 2000)}` : ''}
-- Pertanyaan Sebelumnya (JANGAN DIULANG): ${payload.previousQuestions?.join(' | ') || 'Belum ada'}
+${researchContext}
 
-Panduan Pendekatan Penelitian:
-${approachGuidance || 'Sesuaikan pertanyaan dengan bidang dan metode penelitian yang disebutkan di atas.'}
+Mode penguji:
+${examinerMode} — ${normalizeQuestionMode(examinerMode)}
 
-Karakter & Mode Penguji:
-Mode saat ini adalah: "${payload.examinerMode}"
-Panduan gaya bertanya berdasarkan Mode Penguji:
-- "santai": Tanyakan dengan nada mendukung, ramah, bersahabat, namun tetap akademis. Pertanyaan lebih mudah dipahami dan dijawab.
-- "kritis": Pertanyaan tajam, mendalam, objektif, menanyakan landasan logis di balik keputusan desain/penelitian.
-- "killer": Tekankan celah penelitian, tanyakan hal-hal menekan secara konfrontatif untuk menguji ketahanan mental dan keyakinan argumen mahasiswa.
-- "metodologi": Fokus sepenuhnya pada keselarasan masalah, tujuan, instrumen, validitas proses, dan kesahihan langkah-langkah penelitian.
-- "statistik": Tanyakan signifikansi data, uji statistik, validasi angka, atau metrik evaluasi. Jika riset bukan penelitian kuantitatif/statistik, arahkan pertanyaan ke validasi data/bukti/hasil, bukan metrik machine learning.
-- "novelty": Fokus pada kebaruan penelitian, kontribusi ilmiah, pembeda nyata dibanding penelitian terdahulu, dan orisinalitas ide.
-- "implementasi": Fokus pada penerapan praktis di lapangan, kegunaan hasil penelitian, dampak nyata bagi pengguna atau pemangku kepentingan, dan potensi hambatan operasional saat diterapkan.
+Nomor pertanyaan saat ini:
+${questionIndex + 1}
 
-Aturan Penting Pertanyaan:
-1. LINTAS JURUSAN — JANGAN berasumsi penelitian ini dari Teknik Informatika/Komputer jika tidak disebutkan. Sesuaikan sepenuhnya dengan bidang yang tertulis.
-2. SPESIFIK & RELEVAN: Pertanyaan harus dikaitkan langsung dengan judul, metode, bidang, atau abstrak. Jangan memberikan pertanyaan template umum.
-3. BAHASA: Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia.
-4. JANGAN REPETISI: Jangan membuat pertanyaan yang semakna atau mengulang topik pertanyaan sebelumnya.
-5. JANGAN MENANYAKAN METRIK ML (akurasi, F1, dataset, overfitting, confusion matrix, dll.) jika penelitian tidak menyebut machine learning, deep learning, atau pemodelan komputasi.
-6. KHUSUS SISTEM PAKAR: Fokus pada knowledge base, validasi pakar, alur inferensi, Certainty Factor, dan batasan sistem — bukan metrik ML.
-7. FORMAT: Pertanyaan singkat dan padat (maksimal 1–2 kalimat).
+Fokus wajib untuk pertanyaan nomor ini:
+${focusPlan}
 
-Return ONLY JSON format (tanpa markdown, pastikan JSON valid):
+Variasi seed:
+${randomSeed}
+
+${previousContext}
+
+ATURAN WAJIB:
+1. Gunakan seluruh konteks penelitian, termasuk isi dokumen lengkap jika tersedia.
+2. Jangan hanya memakai abstrak.
+3. Jangan mengulang pertanyaan sebelumnya, baik secara kalimat maupun maksud.
+4. Jangan membuat pertanyaan yang tidak relevan dengan bidang/topik/metode/dokumen.
+5. Pertanyaan harus mengikuti "Fokus wajib untuk pertanyaan nomor ini".
+6. Untuk mode santai, tetap buat pertanyaan yang mudah dijawab, tetapi topiknya harus berbeda-beda setiap nomor.
+7. Jangan selalu memulai dengan frasa "Bisa Anda ceritakan..." atau "Mengapa Anda memilih...".
+8. Variasikan bentuk pertanyaan, misalnya:
+   - "Bagaimana Anda memastikan..."
+   - "Apa dasar Anda..."
+   - "Di bagian mana penelitian ini..."
+   - "Apa yang akan Anda jawab jika penguji menanyakan..."
+   - "Bagaimana hubungan antara..."
+   - "Sejauh mana..."
+9. Jangan mengasumsikan penelitian ini adalah sistem/software jika dokumen tidak menyebut pengembangan sistem.
+10. Mode implementasi berarti penerapan hasil atau pelaksanaan penelitian, bukan selalu implementasi aplikasi.
+11. Jangan menanyakan metrik evaluasi, akurasi, precision, recall, F1-score, confusion matrix, atau machine learning jika penelitian tidak membahas model/performa/eksperimen kuantitatif.
+12. Jika penelitian memang membahas Machine Learning atau evaluasi model, pertanyaan boleh membahas data, validasi, overfitting, seleksi fitur, hasil, atau interpretasi, tetapi jangan selalu bertanya metrik.
+13. Untuk penelitian kualitatif, arahkan ke informan, triangulasi, validitas data, proses analisis, dan kontribusi.
+14. Untuk penelitian kuantitatif, arahkan ke variabel, sampel, instrumen, validitas, reliabilitas, uji statistik, dan interpretasi hasil.
+15. Untuk R&D/pengembangan, arahkan ke kebutuhan pengguna, desain produk, validasi ahli, uji coba, revisi, dan kebermanfaatan.
+16. Untuk studi literatur, arahkan ke sumber literatur, kriteria inklusi-eksklusi, proses seleksi, dan sintesis temuan.
+17. Pertanyaan harus terdengar seperti dosen penguji, bukan chatbot template.
+18. Pertanyaan cukup 1 kalimat atau maksimal 2 kalimat pendek.
+19. Jangan buat pertanyaan terlalu mirip dengan daftar pertanyaan bank lokal.
+
+Output wajib JSON valid:
 {
-  "question": "Kalimat pertanyaan penguji...",
-  "category": "Kategori pertanyaan (misal: metode, novelty, batasan, implementasi, latar_belakang)",
-  "reason": "Alasan singkat mengapa Anda mengajukan pertanyaan ini"
-}`;
+  "question": "pertanyaan di sini",
+  "category": "kategori singkat sesuai fokus",
+  "provider": "gemini"
+}
+`.trim();
 
-    const result = await callAIProvider(provider, prompt, 'question');
-    if (!result || typeof result.question !== 'string' || !result.question.trim()) {
-      throw new Error('Invalid AI response structure: question is missing or empty.');
-    }
-    console.log(`[AI] question success provider=${provider}`);
-    return result;
-  } catch (error: any) {
-    console.warn(`[AI] question failed, using fallback:`, error.message);
-    const localQuestion = generateQuestion(
-      payload.research,
-      payload.examinerMode,
-      payload.questionIndex,
-      payload.previousQuestions
-    );
-    return {
-      question: localQuestion,
-      category: "fallback",
-      reason: "Provider AI sedang tidak tersedia, menggunakan fallback lokal.",
-      provider: "local-fallback"
-    };
-  }
+  const result = await callGemini(prompt);
+
+  return {
+    question: safeText(result.question, "Apa bagian paling penting dari penelitian Anda yang perlu dipahami penguji?"),
+    category: safeText(result.category, focusPlan),
+    provider: "gemini",
+  };
 }
 
 export async function evaluateDefenseAnswerAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'gemini';
-  console.log(`[AI] evaluate request started (provider=${provider})`);
+  const research = payload?.research || {};
+  const examinerMode = payload?.examinerMode || research.examinerMode || "kritis";
+  const question = safeText(payload?.question);
+  const answer = safeText(payload?.answer);
 
-  if (provider === 'local' || provider !== 'gemini') {
-    if (provider !== 'local') {
-      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
-    }
-    const localEval = evaluateAnswer(
-      payload.question,
-      payload.answer,
-      payload.research,
-      payload.examinerMode
-    );
-    console.log(`[AI] evaluate success provider=local-fallback`);
-    return {
-      ...localEval,
-      provider: "local-fallback"
-    };
-  }
+  const researchContext = buildResearchContext(research);
 
-  try {
-    const prompt = `Anda adalah dosen penguji sidang akademik yang bertugas mengevaluasi jawaban mahasiswa secara kritis, objektif, dan bervariasi.
+  const prompt = `
+Anda adalah dosen penguji akademik berbahasa Indonesia.
 
-Konteks Penelitian Mahasiswa:
-- Judul Penelitian: ${payload.research.title}
-- Pendekatan Penelitian: ${payload.research.researchApproach || 'Tidak disebutkan'}
-- Metode / Teknik: ${payload.research.method}
-- Bidang / Topik: ${payload.research.field || 'Umum'}
-- Kata Kunci: ${payload.research.keywords || 'Tidak disediakan'}
-${payload.research.documentPreview ? `- Konteks Dokumen Tambahan (gunakan jika abstrak kurang lengkap untuk memahami metode, data, dan kontribusi):
-${payload.research.documentPreview.substring(0, 1500)}` : ''}
+Tugas:
+Nilai jawaban mahasiswa terhadap pertanyaan sidang yang sedang aktif.
 
-Konteks Tanya-Jawab yang Sedang Aktif:
-- Pertanyaan Penguji yang Aktif: "${payload.question}"
-- Jawaban Mahasiswa untuk Pertanyaan Tersebut: "${payload.answer}"
-- Mode Penguji saat ini: "${payload.examinerMode}"
+${researchContext}
 
-CATATAN PENTING: Evaluasi jawaban sesuai dengan bidang dan pendekatan penelitian mahasiswa. Jangan menilai berdasarkan standar Teknik Informatika/ML jika penelitian mahasiswa bukan dari bidang tersebut.
+Mode penguji:
+${examinerMode} — ${normalizeQuestionMode(examinerMode)}
 
-Tugas Anda adalah menilai kualitas jawaban mahasiswa secara dinamis terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
+Pertanyaan yang sedang dinilai:
+${question}
 
-Kriteria Bobot Penilaian (Skala 0 - 100):
-1. Relevansi terhadap pertanyaan aktif: 35%
-2. Ketepatan konsep/metodologi: 25%
-3. Kelengkapan argumen: 20%
-4. Kejelasan dan struktur jawaban: 10%
-5. Kemampuan mempertahankan penelitian: 10%
+Jawaban mahasiswa:
+${answer}
 
-Aturan Penting Penilaian:
-- Evaluasi harus dinamis, objektif, dan bernilai variatif antara 0 hingga 100 berdasarkan kualitas jawaban nyata. JANGAN gunakan nilai default atau selalu 70.
-- Jika jawaban tidak relevan dengan pertanyaan aktif, skor harus turun signifikan (maksimal 50) meskipun jawaban ditulis sangat panjang lebar.
-- Jika jawaban kosong, sangat pendek (kurang dari 1-2 kalimat pendek), atau hanya noise/tidak bermakna, berikan skor maksimal 40.
-- Jika jawaban panjang tetapi berputar-putar, melantur, atau repetitif tanpa substansi baru, berikan pengurangan nilai yang signifikan (maksimal 55).
-- Panduan Skor Akhir:
-  * 0–30: tidak menjawab / sangat tidak relevan (tidak nyambung total) / hanya berisi noise.
-  * 31–50: menjawab sebagian tapi meleset dari inti pertanyaan atau argumen sangat lemah.
-  * 51–70: cukup relevan tapi kurang detail, kurang bukti ilmiah, atau berputar-putar.
-  * 71–85: baik, relevan, terstruktur cukup kuat, dan menyangkut metodologi/konteks penelitian.
-  * 86–100: sangat kuat, spesifik, argumentatif, didukung logika ilmiah solid, dan sesuai konteks penelitian.
+ATURAN PENILAIAN:
+1. Nilai jawaban berdasarkan pertanyaan yang sedang aktif, jangan mengganti pertanyaan.
+2. Cocokkan jawaban dengan konteks penelitian dan isi dokumen jika tersedia.
+3. Skor harus realistis 0-100, jangan selalu 70.
+4. Skor rendah jika jawaban tidak relevan, terlalu umum, atau tidak menjawab inti pertanyaan.
+5. Skor tinggi jika jawaban relevan, spesifik, runtut, dan sesuai konteks penelitian.
+6. Pertimbangkan:
+   - relevansi terhadap pertanyaan
+   - ketepatan konsep/metode
+   - kedalaman argumen
+   - kejelasan struktur
+   - kesesuaian dengan dokumen penelitian
+7. Jika tidak ada kelemahan besar, isi weaknesses dengan ["Tidak ada."].
+8. Gunakan bahasa Indonesia yang jelas, singkat, dan akademik.
+9. strengths dan weaknesses harus berupa array, bukan paragraf panjang.
 
-Panduan Penulisan Feedback & Bahasa:
-- Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
-- Sediakan followUpQuestion (pertanyaan lanjutan) jika dirasa ada poin penting dari jawaban mahasiswa yang perlu digali lagi (opsional, jika tidak ada kosongkan "").
-- Format feedback strengths (kekuatan), weaknesses (kelemahan), dan suggestion (saran perbaikan) sebagai list yang rapi: gunakan format bullet-point sederhana atau daftar bernomor jika ada banyak poin.
-
-Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
+Output wajib JSON valid:
 {
-  "score": [skor dinamis 0-100 berupa angka],
-  "strengths": ["kekuatan 1", "kekuatan 2", ...],
-  "weaknesses": ["kelemahan 1", "kelemahan 2", ...],
-  "suggestion": "Saran perbaikan praktis..."
-}`;
+  "score": 0,
+  "strengths": ["..."],
+  "weaknesses": ["..."],
+  "suggestion": "...",
+  "provider": "gemini"
+}
+`.trim();
 
-    const result = await callAIProvider(provider, prompt, 'evaluate');
-    if (!result) {
-      throw new Error('Empty result from AI provider during evaluation.');
-    }
+  const result = await callGemini(prompt);
 
-    let score = Number(result.score);
-    if (isNaN(score)) {
-      score = 50; 
-    }
-    score = Math.max(0, Math.min(100, score));
-    result.score = score;
-    
-    // Normalisasi strengths agar selalu array of strings
-    if (!Array.isArray(result.strengths)) {
-      if (typeof result.strengths === 'string') {
-        const splitText = result.strengths.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
-        result.strengths = splitText.length > 0 ? splitText : [result.strengths];
-      } else {
-        result.strengths = [];
-      }
-    }
-    
-    // Normalisasi weaknesses agar selalu array of strings
-    if (!Array.isArray(result.weaknesses)) {
-      if (typeof result.weaknesses === 'string') {
-        const splitText = result.weaknesses.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
-        result.weaknesses = splitText.length > 0 ? splitText : [result.weaknesses];
-      } else {
-        result.weaknesses = [];
-      }
-    }
-    if (typeof result.suggestion !== 'string') {
-      result.suggestion = '';
-    }
-    
-    console.log(`[AI] evaluate success provider=${provider} score=${score}`);
-    return result;
-  } catch (error: any) {
-    console.warn(`[AI] evaluate failed, using fallback:`, error.message);
-    const localEval = evaluateAnswer(
-      payload.question,
-      payload.answer,
-      payload.research,
-      payload.examinerMode
-    );
-    return {
-      ...localEval,
-      provider: "local-fallback"
-    };
-  }
+  const score = Math.max(0, Math.min(100, Number(result.score) || 0));
+
+  const strengths = Array.isArray(result.strengths)
+    ? result.strengths.map((x: any) => String(x).trim()).filter(Boolean)
+    : [];
+
+  const weaknesses = Array.isArray(result.weaknesses)
+    ? result.weaknesses.map((x: any) => String(x).trim()).filter(Boolean)
+    : [];
+
+  return {
+    score,
+    strengths: strengths.length ? strengths : ["Belum terdeteksi secara jelas."],
+    weaknesses: weaknesses.length ? weaknesses : ["Tidak ada."],
+    suggestion: safeText(result.suggestion, "Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan."),
+    provider: "gemini",
+  };
 }
 
 export async function generateFinalEvaluationAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'gemini';
-  console.log(`[AI] final evaluation request started (provider=${provider})`);
-  
-  if (provider === 'local' || provider !== 'gemini') {
-    if (provider !== 'local') {
-      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
-    }
-    const sessionObj = {
-      research: payload.research,
-      transcript: payload.transcript
-    } as any;
-    const localFinal = generateFinalEvaluation(sessionObj);
-    console.log(`[AI] final evaluation success provider=local-fallback`);
-    return {
-      ...localFinal,
-      provider: "local-fallback"
-    };
-  }
+  const research = payload?.research || {};
+  const examinerMode = payload?.examinerMode || research.examinerMode || "kritis";
+  const transcript = Array.isArray(payload?.transcript) ? payload.transcript : [];
 
-  try {
-    const transcriptText = payload.transcript.map((t: any) => {
-      let sender = 'Penguji';
-      if (t.type === 'answer') sender = 'Mahasiswa';
-      else if (t.type === 'feedback') sender = 'Umpan Balik Penguji';
-      return `${sender}: ${t.content}`;
-    }).join('\n');
+  const researchContext = buildResearchContext(research);
 
-    const prompt = `Buat ringkasan evaluasi akhir sidang akademik berdasarkan transkrip tanya-jawab berikut.
+  const transcriptText = transcript
+    .map((item: any, index: number) => {
+      const label =
+        item.type === "question"
+          ? "PENGUJI"
+          : item.type === "answer"
+            ? "MAHASISWA"
+            : item.type === "feedback"
+              ? "UMPAN BALIK"
+              : "SISTEM";
 
-Data Sesi Penelitian:
-- Judul: ${payload.research.title}
-- Bidang / Topik: ${payload.research.field || 'Umum'}
-- Pendekatan Penelitian: ${payload.research.researchApproach || 'Tidak disebutkan'}
-- Metode / Teknik: ${payload.research.method || 'Tidak disebutkan'}
-- Mode Penguji: ${payload.research.examinerMode || payload.examinerMode}
+      return `${index + 1}. [${label}] ${item.content || ""}${typeof item.score === "number" ? `\nSkor: ${item.score}` : ""}`;
+    })
+    .join("\n\n")
+    .slice(0, 30000);
 
-Transkrip Tanya-Jawab:
+  const prompt = `
+Anda adalah dosen penguji akademik berbahasa Indonesia.
+
+Tugas:
+Buat evaluasi akhir sesi simulasi sidang.
+
+${researchContext}
+
+Mode penguji:
+${examinerMode} — ${normalizeQuestionMode(examinerMode)}
+
+Transkrip sesi:
 ${transcriptText}
 
-Tugas Anda adalah merangkum jalannya sidang dan menilai performa mahasiswa.
-Aturan Skor Akhir & Bahasa:
-- Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
-- Berikan skor akhir (0 - 100) berdasarkan pemahaman jawaban mahasiswa yang tertera di transkrip. JANGAN memberikan skor 0 jika mahasiswa sudah menjawab (nilai baseline minimal 50).
-- Saran latihan (nextPractice) harus relevan dengan bidang/topik penelitian mahasiswa, BUKAN template Teknik Informatika jika bidangnya berbeda.
+ATURAN:
+1. Gunakan seluruh transkrip sesi.
+2. Jika ada skor pada umpan balik, jadikan itu dasar skor akhir.
+3. Jangan memberi skor 0 jika mahasiswa sudah menjawab.
+4. Ringkas performa mahasiswa secara jujur dan akademik.
+5. strengths, weaknesses, dan nextPractice harus berupa array.
+6. Jika kelemahan tidak terlalu besar, tetap berikan area latihan yang realistis.
 
-Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
+Output wajib JSON valid:
 {
-  "score": 80,
-  "summary": "Ringkasan penilaian akhir keseluruhan sidang dalam Bahasa Indonesia...",
-  "strengths": ["Poin kelebihan umum mahasiswa...", "..."],
-  "weaknesses": ["Poin kekurangan umum mahasiswa...", "..."],
-  "nextPractice": ["Saran latihan selanjutnya yang relevan dengan bidang penelitian mahasiswa..."]
-}`;
-
-    const result = await callAIProvider(provider, prompt, 'final-evaluation');
-    if (!result) {
-      throw new Error('Empty result from AI provider during final evaluation.');
-    }
-
-    let score = Number(result.score);
-    if (isNaN(score)) {
-      score = 50;
-    }
-    score = Math.max(0, Math.min(100, score));
-    result.score = score;
-    
-    if (typeof result.summary !== 'string') {
-      result.summary = '';
-    }
-    if (!Array.isArray(result.strengths)) {
-      result.strengths = [];
-    }
-    if (!Array.isArray(result.weaknesses)) {
-      result.weaknesses = [];
-    }
-    if (!Array.isArray(result.nextPractice)) {
-      result.nextPractice = [];
-    }
-    
-    console.log(`[AI] final evaluation success provider=${provider}`);
-    return result;
-  } catch (error: any) {
-    console.warn(`[AI] final evaluation failed, using fallback:`, error.message);
-    const sessionObj = {
-      research: payload.research,
-      transcript: payload.transcript
-    } as any;
-    const localFinal = generateFinalEvaluation(sessionObj);
-    return {
-      ...localFinal,
-      provider: "local-fallback"
-    };
-  }
+  "score": 0,
+  "summary": "...",
+  "strengths": ["..."],
+  "weaknesses": ["..."],
+  "nextPractice": ["..."],
+  "provider": "gemini"
 }
+`.trim();
 
-async function callAIProvider(provider: string, prompt: string, type: string): Promise<any> {
-  if (provider === 'gemini') {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'isi_api_key_gemini_di_sini' || apiKey.trim() === '') {
-      throw new Error('Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.');
-    }
-    return await callGemini(prompt, type);
-  }
-  throw new Error(`Unknown AI Provider configured: "${provider}"`);
-}
+  const result = await callGemini(prompt);
 
-async function callGemini(prompt: string, type: string) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash';
-  if (!apiKey) throw new Error('Missing Gemini API Key');
+  const score = Math.max(0, Math.min(100, Number(result.score) || 0));
 
-  console.log(`[AI Provider] provider=gemini type=${type} model=${primaryModel}`);
-
-  try {
-    return await executeGeminiRequest(apiKey, primaryModel, prompt);
-  } catch (error: any) {
-    if (fallbackModel) {
-      console.warn(`[AI Provider] Gemini primary model ${primaryModel} failed (${error.message}). Retrying with fallback model ${fallbackModel}...`);
-      console.log(`[AI Provider] provider=gemini type=${type} model=${fallbackModel}`);
-      try {
-        return await executeGeminiRequest(apiKey, fallbackModel, prompt);
-      } catch (fallbackError: any) {
-        console.error(`[AI Provider] Gemini fallback model failed, using local fallback: ${fallbackError.message}`);
-        throw fallbackError;
-      }
-    } else {
-      console.error(`[AI Provider] Gemini failed, using local fallback: ${error.message}`);
-      throw error;
-    }
-  }
-}
-
-async function executeGeminiRequest(apiKey: string, model: string, prompt: string) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const res = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.75,
-        responseMimeType: 'application/json'
-      }
-    })
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Gemini HTTP Error ${res.status}: ${errorText}`);
-  }
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response content from Gemini API');
-  
-  const parsed = safeJsonParse(text);
-  parsed.provider = 'gemini';
-  return parsed;
+  return {
+    score,
+    summary: safeText(result.summary, "Sesi latihan selesai. Evaluasi dibuat berdasarkan jawaban selama simulasi."),
+    strengths: Array.isArray(result.strengths) && result.strengths.length
+      ? result.strengths.map((x: any) => String(x).trim()).filter(Boolean)
+      : ["Mampu menyelesaikan sesi latihan."],
+    weaknesses: Array.isArray(result.weaknesses) && result.weaknesses.length
+      ? result.weaknesses.map((x: any) => String(x).trim()).filter(Boolean)
+      : ["Perlu memperjelas struktur dan kedalaman jawaban."],
+    nextPractice: Array.isArray(result.nextPractice) && result.nextPractice.length
+      ? result.nextPractice.map((x: any) => String(x).trim()).filter(Boolean)
+      : ["Latih jawaban dengan struktur: alasan, bukti, dan relevansi dengan penelitian."],
+    provider: "gemini",
+  };
 }

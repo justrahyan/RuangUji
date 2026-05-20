@@ -16,7 +16,7 @@ import TextDetailModal from '../components/TextDetailModal';
 function normalizeFeedback(evaluation: any) {
   let score = Number(evaluation.score);
   if (isNaN(score) || score === 0) {
-    score = 50; 
+    score = 50;
   }
   score = Math.max(0, Math.min(100, score));
 
@@ -58,10 +58,10 @@ function normalizeFeedback(evaluation: any) {
 export default function DefenseRoomPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<DefenseSession | null>(null);
-  
+
   // Modes
   const [isVoiceMode, setIsVoiceMode] = useState(false); // DEFAULT = CHAT MODE
-  
+
   // Mobile Drawers
   const [showLeftDrawer, setShowLeftDrawer] = useState(false);
   const [showRightDrawer, setShowRightDrawer] = useState(false);
@@ -73,14 +73,14 @@ export default function DefenseRoomPage() {
   const [voiceEnabled, setVoiceEnabled] = useState(localStorage.getItem('ruanguji_voice_muted') !== 'true');
   const [voiceProfile, setVoiceProfile] = useState(localStorage.getItem('ruanguji_voice_profile') || 'Formal');
   const [hasFeedback, setHasFeedback] = useState(false);
-  
+
   const [chatInput, setChatInput] = useState('');
   const [isDictating, setIsDictating] = useState(false);
   const dictationRef = useRef<any>(null);
 
   const [showBackModal, setShowBackModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
-  
+
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailModalContent, setDetailModalContent] = useState({ title: '', content: '' });
 
@@ -150,8 +150,8 @@ export default function DefenseRoomPage() {
   }, [session?.transcript, isVoiceMode, isGeneratingQuestion, isEvaluatingAnswer]);
 
   useEffect(() => {
-    return () => { 
-      stopSpeaking(); 
+    return () => {
+      stopSpeaking();
       if (dictationRef.current) dictationRef.current.stop();
     };
   }, []);
@@ -184,16 +184,21 @@ export default function DefenseRoomPage() {
     setSpokenText('Menyiapkan pertanyaan...');
     setHasFeedback(false);
 
-    const previousQuestions = currentSession.transcript
-      .filter(t => t.type === 'question')
-      .map(t => t.content);
+    const previousQuestions = Array.from(
+      new Set(
+        currentSession.transcript
+          .filter(t => t.type === 'question')
+          .map(t => t.content.trim())
+          .filter(Boolean)
+      )
+    );
 
     const requestId = ++questionRequestIdRef.current;
     let qText = '';
     let category = 'umum';
     let source: 'ai' | 'local-fallback' = 'ai';
     let errorOccurred = false;
-    
+
     try {
       const res = await fetch('/api/ai/question', {
         method: 'POST',
@@ -208,6 +213,7 @@ export default function DefenseRoomPage() {
 
       if (!res.ok) throw new Error('API fallback');
       const data = await res.json();
+      console.log('[QUESTION SOURCE]', data.provider, data.question);
       qText = data.question;
       category = data.category || 'umum';
       if (data.provider === 'local-fallback') {
@@ -216,8 +222,8 @@ export default function DefenseRoomPage() {
     } catch (error) {
       console.warn('API unavailable, using local engine');
       qText = generateQuestion(
-        currentSession.research, 
-        currentSession.research.examinerMode, 
+        currentSession.research,
+        currentSession.research.examinerMode,
         currentSession.currentQuestionIndex,
         previousQuestions
       );
@@ -225,11 +231,11 @@ export default function DefenseRoomPage() {
       source = 'local-fallback';
       errorOccurred = true;
     }
-    
+
     // Check if this request is still the active one and user hasn't answered
     if (requestId !== questionRequestIdRef.current) return;
     if (hasUserAnsweredRef.current) return;
-    
+
     const questionId = Date.now().toString();
     const newQuestion = {
       id: questionId,
@@ -238,9 +244,9 @@ export default function DefenseRoomPage() {
       source: source,
       locked: true
     };
-    
+
     setCurrentQuestion(newQuestion);
-    
+
     const qItem: TranscriptItem = {
       id: questionId,
       type: 'question',
@@ -249,12 +255,12 @@ export default function DefenseRoomPage() {
       questionText: qText,
       createdAt: new Date().toISOString()
     };
-    
+
     const updated = addTranscript(qItem, currentSession);
     setSpokenText(qText);
     setIsGeneratingQuestion(false);
     setAiStatus(errorOccurred ? 'error' : source === 'local-fallback' ? 'fallback' : 'idle');
-    
+
     setOrbState('speaking');
     if (voiceEnabled) {
       speakText(qText, () => setOrbState('speaking'), () => setOrbState('idle'));
@@ -265,7 +271,7 @@ export default function DefenseRoomPage() {
 
   const handleAnswerSubmit = async (answerText: string) => {
     if (!session || !answerText.trim() || !currentQuestion || isGeneratingQuestion || isEvaluatingAnswer) return;
-    
+
     hasUserAnsweredRef.current = true;
     stopSpeaking();
     setIsEvaluatingAnswer(true);
@@ -275,11 +281,11 @@ export default function DefenseRoomPage() {
     setSpokenText('Menganalisis jawaban...');
     setChatInput('');
     if (isDictating) toggleDictation();
-    
+
     const activeAnswerQuestionId = currentQuestion.id;
     const activeAnswerQuestionText = currentQuestion.text;
     const activeAnswerText = answerText.trim();
-    
+
     const ansItem: TranscriptItem = {
       id: Date.now().toString(),
       type: 'answer',
@@ -289,9 +295,9 @@ export default function DefenseRoomPage() {
       answerText: activeAnswerText,
       createdAt: new Date().toISOString()
     };
-    
+
     const updatedSession = addTranscript(ansItem, session);
-    
+
     let evaluation;
     let errorOccurred = false;
     try {
@@ -313,7 +319,7 @@ export default function DefenseRoomPage() {
       evaluation = evaluateAnswer(activeAnswerQuestionText, activeAnswerText, updatedSession.research, updatedSession.research.examinerMode);
       errorOccurred = true;
     }
-    
+
     // Ignore response if question was changed in the meantime
     if (currentQuestion.id !== activeAnswerQuestionId) {
       console.warn("Ignored evaluation response: currentQuestion changed while evaluating.");
@@ -322,13 +328,13 @@ export default function DefenseRoomPage() {
       setOrbState('idle');
       return;
     }
-    
+
     const normEval = normalizeFeedback(evaluation);
     const strengthsText = normEval.strengths.map((s, idx) => `${idx + 1}) ${s}`).join('\n');
     const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
-    
+
     const feedbackText = `Skor: ${normEval.score}.\n\nKekuatan:\n${strengthsText}\n\nPerlu Diperbaiki:\n${weaknessesText}\n\nSaran:\n${normEval.suggestion}`;
-    
+
     const fbItem: TranscriptItem = {
       id: Date.now().toString(),
       type: 'feedback',
@@ -340,13 +346,13 @@ export default function DefenseRoomPage() {
       score: normEval.score,
       createdAt: new Date().toISOString()
     };
-    
+
     addTranscript(fbItem, updatedSession);
     setSpokenText(feedbackText);
     setHasFeedback(true);
     setIsEvaluatingAnswer(false);
     setAiStatus(errorOccurred ? 'error' : 'idle');
-    
+
     setOrbState('speaking');
     if (voiceEnabled) {
       speakText(feedbackText, () => setOrbState('speaking'), () => setOrbState('idle'));
@@ -358,20 +364,20 @@ export default function DefenseRoomPage() {
   const handleNextQuestion = () => {
     if (!session || isGeneratingQuestion || isEvaluatingAnswer) return;
     stopSpeaking();
-    
+
     if (session.currentQuestionIndex + 1 >= session.research.questionCount) {
       executeFinishSession();
     } else {
       setChatInput('');
       setHasFeedback(false);
       hasUserAnsweredRef.current = false;
-      
+
       const updated = { ...session, currentQuestionIndex: session.currentQuestionIndex + 1 };
       setSession(updated);
       saveActiveSession(updated);
-      
+
       setCurrentQuestion(prev => prev ? { ...prev, locked: false } : null);
-      
+
       handleGenerateQuestion(updated);
     }
   };
@@ -383,7 +389,7 @@ export default function DefenseRoomPage() {
       const avg = Math.round(total / feedbackItems.length);
       return Math.max(0, Math.min(100, avg));
     }
-    
+
     const hasAnswers = transcript.some(t => t.type === 'answer');
     if (hasAnswers) {
       return 50;
@@ -398,7 +404,7 @@ export default function DefenseRoomPage() {
     setOrbState('thinking');
     setSpokenMode('feedback');
     setSpokenText('Menyusun evaluasi akhir...');
-    
+
     let finalEval;
     try {
       const res = await fetch('/api/ai/final-evaluation', {
@@ -416,7 +422,7 @@ export default function DefenseRoomPage() {
       console.warn('Fallback final eval');
       finalEval = generateFinalEvaluation(latestSession);
     }
-    
+
     const avgScore = calculateAverageScore(latestSession.transcript);
     let finalScore = Number(finalEval.score);
     if (isNaN(finalScore) || finalScore === 0) {
@@ -428,7 +434,7 @@ export default function DefenseRoomPage() {
     }
     finalScore = Math.max(0, Math.min(100, finalScore));
     finalEval.score = finalScore;
-    
+
     const hasAnswers = latestSession.transcript.some(t => t.type === 'answer');
     if (hasAnswers) {
       saveHistoryItem({
@@ -477,7 +483,7 @@ export default function DefenseRoomPage() {
       recognition.lang = 'id-ID';
       recognition.continuous = false;
       recognition.interimResults = false;
-      
+
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
         setChatInput(prev => {
@@ -488,10 +494,10 @@ export default function DefenseRoomPage() {
           return newText;
         });
       };
-      
+
       recognition.onend = () => setIsDictating(false);
       recognition.onerror = () => setIsDictating(false);
-      
+
       dictationRef.current = recognition;
       recognition.start();
       setIsDictating(true);
@@ -517,27 +523,27 @@ export default function DefenseRoomPage() {
   const progressPercent = Math.min((currentQ / research.questionCount) * 100, 100);
 
   const orbStateLabel = isGeneratingQuestion ? 'Menyiapkan pertanyaan...' :
-                        isEvaluatingAnswer ? 'Menganalisis jawaban...' :
-                        orbState === 'idle' ? 'Siap menguji' :
-                        orbState === 'speaking' ? 'Sedang berbicara...' :
-                        orbState === 'listening' ? 'Mendengarkan...' : 'Menganalisis...';
+    isEvaluatingAnswer ? 'Menganalisis jawaban...' :
+      orbState === 'idle' ? 'Siap menguji' :
+        orbState === 'speaking' ? 'Sedang berbicara...' :
+          orbState === 'listening' ? 'Mendengarkan...' : 'Menganalisis...';
 
   const activeQuestionItem = session.transcript.slice().reverse().find(t => t.type === 'question');
   const activeQuestion = activeQuestionItem ? activeQuestionItem.content : '';
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', overflow: 'hidden' }}>
-      
+
       {/* Mobile Drawer Overlay */}
-      <div 
-        className={`mobile-overlay ${showLeftDrawer || showRightDrawer ? 'open' : ''}`} 
+      <div
+        className={`mobile-overlay ${showLeftDrawer || showRightDrawer ? 'open' : ''}`}
         onClick={() => { setShowLeftDrawer(false); setShowRightDrawer(false); }}
       ></div>
 
       {/* Header Fullscreen Workspace */}
       <header style={{ height: '72px', flexShrink: 0, backgroundColor: 'var(--white)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 16px', zIndex: 10 }}>
         <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button onClick={() => setShowBackModal(true)} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
               <ArrowLeft size={18} /> <span className="hidden-mobile">Kembali</span>
@@ -571,13 +577,13 @@ export default function DefenseRoomPage() {
             <span className="badge hidden-mobile" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
               Durasi: {research.sessionLength}
             </span>
-            <select 
-              value={voiceProfile} 
+            <select
+              value={voiceProfile}
               onChange={(e) => {
                 setVoiceProfile(e.target.value);
                 localStorage.setItem('ruanguji_voice_profile', e.target.value);
               }}
-              className="badge hidden-mobile" 
+              className="badge hidden-mobile"
               style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', outline: 'none', cursor: 'pointer' }}
             >
               <option value="Tenang">Tenang</option>
@@ -590,18 +596,18 @@ export default function DefenseRoomPage() {
               Akhiri Sesi
             </button>
           </div>
-          
+
         </div>
       </header>
 
       {/* Body Workspace 3 Panel */}
       <main style={{ flex: 1, padding: '20px', overflow: 'hidden' }} className="defense-workspace-grid">
-        
+
         {/* Panel 1: Info Penelitian */}
         <div className={`defense-panel-left ${showLeftDrawer ? 'open' : ''}`} style={{ border: '1px solid var(--border-color)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>INFORMASI LATIHAN</p>
+              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Informasi Latihan</p>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)' }}>Detail Penelitian</h3>
             </div>
             {/* Close button for mobile */}
@@ -609,7 +615,7 @@ export default function DefenseRoomPage() {
               <PanelLeftClose size={20} />
             </button>
           </div>
-          
+
           <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div>
@@ -626,12 +632,52 @@ export default function DefenseRoomPage() {
                 <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Bidang / Topik</p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{research.field || '-'}</p>
               </div>
+              {research.keywords && (
+                <>
+                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                      Kata Kunci / Fokus
+                    </p>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                      {research.keywords}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+              <div>
+                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                  Pendekatan Penelitian
+                </p>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                  {research.researchApproach || '-'}
+                </p>
+              </div>
               <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
               <div>
                 <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Metode</p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{research.method}</p>
               </div>
-              
+
+              {research.documentName && (
+                <>
+                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                      Dokumen Diunggah
+                    </p>
+                    <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {research.documentName}
+                    </p>
+                    <p style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '0.25rem', fontWeight: 600 }}>
+                      Digunakan sebagai konteks AI
+                    </p>
+                  </div>
+                </>
+              )}
+
               {research.concern && (
                 <>
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
@@ -643,7 +689,7 @@ export default function DefenseRoomPage() {
               )}
 
               <div style={{ marginTop: '0.5rem' }}>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Abtrak</p>
+                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Abstrak</p>
                 <div className="custom-scrollbar" style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '16px', maxHeight: '220px', overflowY: 'auto', fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6, border: '1px solid var(--border-color)' }}>
                   {research.abstract || 'Belum ada abstrak.'}
                 </div>
@@ -654,9 +700,9 @@ export default function DefenseRoomPage() {
 
         {/* Panel 2: Obrolan / Voice Stage */}
         <div className="defense-panel-main" style={{ backgroundColor: 'var(--white)', border: '1px solid var(--border-color)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          
+
           <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-soft)' }}>
-            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{isVoiceMode ? 'VOICE STAGE' : 'PANEL PENGUJI'}</p>
+            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: orbState === 'idle' ? '#94a3b8' : 'var(--primary-blue)', animation: orbState !== 'idle' ? 'orbPulse 2s infinite' : 'none' }}></div>
               <p style={{ fontSize: '0.75rem', fontWeight: 700, color: orbState === 'idle' ? 'var(--text-secondary)' : 'var(--primary-blue)' }}>{orbStateLabel}</p>
@@ -664,11 +710,11 @@ export default function DefenseRoomPage() {
           </div>
 
           <div ref={middleScrollRef} className="custom-scrollbar defense-center-scroll" style={{ flex: 1, overflowY: 'auto', padding: isVoiceMode ? '0' : '24px', display: 'flex', flexDirection: 'column', alignItems: isVoiceMode ? 'center' : 'stretch', gap: isVoiceMode ? '0' : '20px', scrollBehavior: 'smooth' }}>
-            
+
             {isVoiceMode ? (
               // ================= VOICE STAGE UI =================
               <div className="fade-up voice-stage-container" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '16px' }}>
-                
+
                 {isGeneratingQuestion ? (
                   <div className="voice-question-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #cbd5e1', borderTopColor: 'var(--primary-blue)', animation: 'spin 0.8s linear infinite' }}></div>
@@ -847,14 +893,14 @@ export default function DefenseRoomPage() {
 
           {/* Action Bar / Input Footer */}
           <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--white)' }}>
-            
+
             {isVoiceMode ? (
               // ================= VOICE MODE CONTROLS =================
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button onClick={() => setIsVoiceMode(false)} disabled={isGeneratingQuestion || isEvaluatingAnswer} className="btn btn-secondary" style={{ padding: '0.625rem 1rem', borderRadius: '999px', fontSize: '0.875rem' }}>
                   Kembali ke Chat
                 </button>
-                
+
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button onClick={toggleVoice} className="btn btn-secondary" style={{ padding: '0.625rem', borderRadius: '50%' }} title={voiceEnabled ? 'Matikan Suara AI' : 'Aktifkan Suara AI'}>
                     {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
@@ -867,10 +913,10 @@ export default function DefenseRoomPage() {
                       {currentQ >= research.questionCount ? 'Selesai' : 'Pertanyaan Berikutnya'}
                     </button>
                   ) : (
-                    <VoiceAnswer 
+                    <VoiceAnswer
                       key={currentQuestionIndex}
-                      onSubmit={handleAnswerSubmit} 
-                      disabled={orbState !== 'idle' && orbState !== 'listening'} 
+                      onSubmit={handleAnswerSubmit}
+                      disabled={orbState !== 'idle' && orbState !== 'listening'}
                       isThinking={orbState === 'thinking'}
                       autoMode={true}
                     />
@@ -910,10 +956,10 @@ export default function DefenseRoomPage() {
                     }
                   }}
                 />
-                
+
                 <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.25rem', paddingRight: '0.5rem' }}>
                   {chatInput.trim() ? (
-                    <button 
+                    <button
                       onClick={() => handleAnswerSubmit(chatInput)}
                       disabled={hasFeedback || orbState === 'thinking' || isGeneratingQuestion || isEvaluatingAnswer}
                       style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary-blue)', color: 'var(--white)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}
@@ -921,7 +967,7 @@ export default function DefenseRoomPage() {
                       <Send size={16} style={{ marginLeft: '2px' }} />
                     </button>
                   ) : (
-                    <button 
+                    <button
                       onClick={toggleDictation}
                       disabled={hasFeedback || orbState === 'thinking' || isGeneratingQuestion || isEvaluatingAnswer}
                       style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: isDictating ? '#ef4444' : 'var(--white)', color: isDictating ? 'var(--white)' : 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
@@ -930,8 +976,8 @@ export default function DefenseRoomPage() {
                       <Mic size={16} />
                     </button>
                   )}
-                  
-                  <button 
+
+                  <button
                     onClick={() => setIsVoiceMode(true)}
                     disabled={isGeneratingQuestion || isEvaluatingAnswer}
                     style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--blue-soft)', color: 'var(--primary-blue)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
@@ -991,7 +1037,7 @@ export default function DefenseRoomPage() {
         onClose={() => setShowEndModal(false)}
       />
 
-      <TextDetailModal 
+      <TextDetailModal
         open={detailModalOpen}
         title={detailModalContent.title}
         content={detailModalContent.content}

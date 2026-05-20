@@ -19,6 +19,7 @@ export interface ResearchProfile {
   method: string;
   abstract: string;
   concern: string;
+  documentText?: string;
   documentPreview?: string;
   documentName?: string;
   documentSize?: number;

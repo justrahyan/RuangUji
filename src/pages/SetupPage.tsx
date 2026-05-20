@@ -33,8 +33,8 @@ export default function SetupPage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [uploadError, setUploadError] = useState('');
-  const [extractedAbstract, setExtractedAbstract] = useState('');   // short, for textarea
-  const [documentPreview, setDocumentPreview] = useState('');        // long, for AI context
+  const [documentText, setDocumentText] = useState('');      // full extracted text for AI context
+  const [documentPreview, setDocumentPreview] = useState(''); // short preview / ringkasan for user
   const [showUseExtracted, setShowUseExtracted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,7 +68,7 @@ export default function SetupPage() {
     setUploadedFile(file);
     setUploadStatus('loading');
     setUploadError('');
-    setExtractedAbstract('');
+    setDocumentText('');
     setDocumentPreview('');
     setShowUseExtracted(false);
 
@@ -79,18 +79,11 @@ export default function SetupPage() {
       const data = await res.json();
 
       if (data.ok && data.text) {
-        setExtractedAbstract(data.text);
-        setDocumentPreview(data.preview || data.text);
+        setDocumentText(data.text);             // full context for AI
+        setDocumentPreview(data.preview || '');  // short preview for user
         setUploadStatus('success');
-
-        if (!abstract.trim()) {
-          // Textarea empty → fill automatically
-          setAbstract(data.text);
-          setShowUseExtracted(false);
-        } else {
-          // Textarea already has content → show button prompt
-          setShowUseExtracted(true);
-        }
+        // Never auto-fill abstract — always show button
+        setShowUseExtracted(true);
       } else {
         setUploadStatus('error');
         setUploadError(data.error || 'Tidak dapat membaca isi dokumen.');
@@ -118,14 +111,15 @@ export default function SetupPage() {
     setUploadedFile(null);
     setUploadStatus('idle');
     setUploadError('');
-    setExtractedAbstract('');
+    setDocumentText('');
     setDocumentPreview('');
     setShowUseExtracted(false);
-    // abstract stays as-is
+    // abstract stays as-is — don't clear user's text
   };
 
   const handleUseExtracted = () => {
-    setAbstract(extractedAbstract);
+    // Fill abstract with the short preview, not the full document text
+    setAbstract(documentPreview || documentText.substring(0, 2000));
     setShowUseExtracted(false);
   };
 
@@ -150,6 +144,7 @@ export default function SetupPage() {
     const research: ResearchProfile = {
       id, title, sessionType, field, keywords,
       researchApproach, method, abstract, concern,
+      documentText: documentText || undefined,
       documentPreview: documentPreview || undefined,
       documentName: uploadedFile?.name,
       documentSize: uploadedFile?.size,
@@ -338,7 +333,7 @@ export default function SetupPage() {
                         value={method}
                         onChange={e => setMethod(e.target.value)}
                       />
-                      {hint('Isi dengan metode atau teknik inti yang benar-benar digunakan.')}
+                      {hint('Isi dengan metode atau teknik inti yang digunakan.')}
                     </div>
                   </div>
 
@@ -371,7 +366,7 @@ export default function SetupPage() {
                         </div>
 
                         {/* Status */}
-                        <div style={{ marginTop: '0.625rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <div style={{ marginTop: '0.625rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           {uploadStatus === 'loading' && (
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: 'var(--primary-blue)', fontSize: '0.8125rem' }}>
                               <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
@@ -381,7 +376,7 @@ export default function SetupPage() {
                           {uploadStatus === 'success' && (
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#16a34a', fontSize: '0.8125rem', fontWeight: 600 }}>
                               <CheckCircle2 size={14} />
-                              {showUseExtracted ? 'Berhasil dibaca.' : 'Berhasil dibaca. Ringkasan telah diisi otomatis.'}
+                              Berhasil dibaca.
                             </span>
                           )}
                           {uploadStatus === 'error' && (
@@ -421,7 +416,7 @@ export default function SetupPage() {
                           Klik atau seret berkas ke sini
                         </p>
                         <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                          PDF atau DOCX · maks. 15 MB · Sistem akan mencoba membaca abstrak dan mengisi ringkasan secara otomatis.
+                          PDF atau DOCX · maks. 15 MB · Dokumen akan digunakan sebagai konteks tambahan oleh AI.
                         </p>
                       </div>
                     )}

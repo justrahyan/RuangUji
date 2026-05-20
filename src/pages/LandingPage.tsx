@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import SectionHeader from '../components/SectionHeader';
-import { 
-  Bot, FileText, Mic, MessageSquare, LineChart, 
-  History, ChevronRight, BookOpen, ChevronDown, ChevronUp 
+import {
+  Bot, FileText, Mic, MessageSquare, LineChart,
+  History, ChevronRight, BookOpen, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -36,7 +36,7 @@ export default function LandingPage() {
   return (
     <PageShell>
       {/* Hero Section */}
-      <section 
+      <section
         className="fade-up"
         style={{
           minHeight: 'calc(100vh - 72px)',
@@ -177,7 +177,7 @@ export default function LandingPage() {
 
         <div className="container" style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
-            
+
             {/* Hero Left Content */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <span className="badge fade-up delay-1" style={{ marginBottom: '1.25rem', backgroundColor: 'var(--blue-soft)', color: 'var(--primary-blue)', border: '1px solid var(--blue-border)', textTransform: 'uppercase' }}>
@@ -189,7 +189,7 @@ export default function LandingPage() {
               <p className="fade-up delay-3" style={{ fontSize: '1.1875rem', color: 'var(--text-secondary)', marginBottom: '2.5rem', lineHeight: 1.6, maxWidth: '640px' }}>
                 Simulasikan tanya jawab skripsi atau tesis secara interaktif. Dapatkan pertanyaan kritis berbasis topik penelitian Anda lengkap dengan penilaian & masukan langsung.
               </p>
-              
+
               <div className="fade-up delay-4" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1rem', width: '100%' }}>
                 <Link to="/setup" className="btn btn-primary" style={{ padding: '0.875rem 2rem', fontSize: '1.0625rem' }}>
                   Mulai Latihan <ChevronRight size={18} />
@@ -207,9 +207,9 @@ export default function LandingPage() {
       {/* Simulator Preview Section */}
       <section className="section" style={{ backgroundColor: 'var(--white)', borderTop: '1px solid var(--border-color)', padding: '5rem 0' }}>
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <SectionHeader 
-            label="Preview Simulator" 
-            title="Simulasi Pertanyaan & Feedback" 
+          <SectionHeader
+            label="Preview Simulator"
+            title="Simulasi Pertanyaan & Feedback"
             subtitle="Dapatkan gambaran nyata pertanyaan kritis dari dosen penguji virtual berserta masukan langsung untuk menyempurnakan jawaban Anda."
             centered
           />
@@ -250,15 +250,15 @@ export default function LandingPage() {
       {/* Fitur Utama Section */}
       <section className="section-soft" style={{ backgroundColor: '#f6f8fb', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
         <div className="container">
-          <SectionHeader 
-            label="Fitur Utama" 
-            title="Semua yang dibutuhkan untuk latihan sidang." 
+          <SectionHeader
+            label="Fitur Utama"
+            title="Semua yang dibutuhkan untuk latihan sidang."
             subtitle="Didesain dengan pendekatan praktis agar Anda siap mental dan materi sebelum menghadapi dosen penguji."
             centered
           />
-          
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-            <FeatureCard icon={<Bot size={24} />} title="Simulasi Penguji" desc="Interaksi tanya jawab real-time dengan penguji AI yang bisa disesuaikan karakteristik watak dosennya." />
+            <FeatureCard icon={<Bot size={24} />} title="Simulasi Penguji" desc="Interaksi tanya jawab real-time dengan penguji AI yang dapat disesuaikan berdasarkan gaya dan fokus pengujian." />
             <FeatureCard icon={<FileText size={24} />} title="Upload Dokumen" desc="Analisis otomatis draf skripsi atau tesis Anda untuk pemetaan pertanyaan yang kontekstual." />
             <FeatureCard icon={<Mic size={24} />} title="Jawaban Teks & Suara" desc="Berlatih merangkai argumentasi lewat penulisan cepat atau perekaman suara layaknya presentasi asli." />
             <FeatureCard icon={<MessageSquare size={24} />} title="Feedback Jawaban" desc="Dapatkan analisis kekuatan dan kelemahan di setiap jawaban beserta saran perbaikan terstruktur." />
@@ -271,9 +271,9 @@ export default function LandingPage() {
       {/* Cara Kerja Section */}
       <section className="section" style={{ backgroundColor: 'var(--white)' }}>
         <div className="container">
-          <SectionHeader 
-            label="Alur Simulasi" 
-            title="Mulai dalam tiga langkah." 
+          <SectionHeader
+            label="Alur Simulasi"
+            title="Mulai dalam tiga langkah."
             subtitle="Hanya butuh 1-2 menit untuk menyiapkan sesi simulasi terfokus sesuai draf penelitian Anda."
             centered
           />
@@ -289,16 +289,28 @@ export default function LandingPage() {
       {/* Mode Penguji Section */}
       <section className="section-soft" style={{ backgroundColor: '#f6f8fb', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
         <div className="container">
-          <SectionHeader 
-            label="Watak Dosen" 
-            title="Gaya penguji yang fleksibel." 
-            subtitle="Latih diri Anda menghadapi berbagai dinamika pertanyaan dengan mengubah fokus dan watak dosen penguji."
+          <SectionHeader
+            label="Mode Penguji"
+            title="Gaya penguji yang fleksibel."
+            subtitle="Latih diri Anda menghadapi berbagai dinamika pertanyaan dengan memilih fokus dan gaya penguji yang sesuai."
             centered
           />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', alignItems: 'center' }}>
             {/* Pill Tabs Selector */}
-            <div className="custom-scrollbar" style={{ display: 'flex', gap: '0.625rem', overflowX: 'auto', paddingBottom: '0.75rem', width: '100%', justifyContent: 'flex-start', maxWidth: '900px' }}>
+            <div
+              className="custom-scrollbar examiner-tabs"
+              style={{
+                display: 'flex',
+                gap: '0.625rem',
+                overflowX: 'auto',
+                paddingBottom: '0.75rem',
+                width: '100%',
+                maxWidth: '900px',
+                justifyContent: 'center',
+                scrollSnapType: 'x proximity'
+              }}
+            >
               {examinerModes.map((mode) => (
                 <button
                   key={mode.name}
@@ -337,9 +349,9 @@ export default function LandingPage() {
       {/* Accordion FAQ */}
       <section className="section" style={{ backgroundColor: 'var(--white)' }}>
         <div className="container" style={{ maxWidth: '780px' }}>
-          <SectionHeader 
-            label="FAQ" 
-            title="Pertanyaan yang sering ditanyakan." 
+          <SectionHeader
+            label="FAQ"
+            title="Pertanyaan yang sering ditanyakan."
             centered
           />
 
@@ -347,7 +359,7 @@ export default function LandingPage() {
             {faqs.map((faq, index) => {
               const isOpen = openFaq === index;
               return (
-                <div 
+                <div
                   key={index}
                   className="card"
                   style={{
@@ -405,6 +417,18 @@ export default function LandingPage() {
           transform: translateY(-4px) scale(1.05) !important;
           box-shadow: 0 20px 25px -5px rgba(37, 99, 235, 0.12), 0 10px 10px -5px rgba(37, 99, 235, 0.04) !important;
           border-color: var(--primary-blue) !important;
+        }
+        .examiner-tabs {
+          margin: 0 auto;
+        }
+        .examiner-tabs button {
+          scroll-snap-align: center;
+        }
+        @media (max-width: 768px) {
+          .examiner-tabs {
+            justify-content: flex-start !important;
+            padding-inline: 0.25rem;
+          }
         }
       `}</style>
     </PageShell>

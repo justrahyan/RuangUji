@@ -69,7 +69,13 @@ interface VoiceAnswerProps {
 export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }: VoiceAnswerProps) {
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
-  const [finalTranscript, setFinalTranscript] = useState('');
+  const [finalTranscript, _setFinalTranscript] = useState('');
+  const finalTranscriptRef = useRef('');
+
+  const setFinalTranscript = (val: string) => {
+    finalTranscriptRef.current = val;
+    _setFinalTranscript(val);
+  };
   
   const [manualMode, setManualMode] = useState(false);
   const [manualText, setManualText] = useState('');
@@ -200,59 +206,57 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   }, []);
 
   const triggerSubmit = () => {
-    setFinalTranscript(currentFinal => {
-      const cleaned = cleanVoiceTranscript(currentFinal);
-      
-      // Jika kosong atau terlalu pendek (kurang dari 15 karakter), jangan kirim
-      if (cleaned.length < 15) {
-        setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
-        setTimeout(() => {
-          setStatusOverride("");
-        }, 3000);
-        
-        setInterimTranscript('');
-        speechStartRef.current = null;
-        setIsSilencePending(false);
-        return '';
-      }
-      
-      // Verifikasi durasi berbicara minimal 1200ms
-      const speechDuration = speechStartRef.current ? (Date.now() - speechStartRef.current) : 0;
-      if (speechDuration < 1200) {
-        console.log("Speech duration too short:", speechDuration, "ms. Resetting.");
-        setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
-        setTimeout(() => {
-          setStatusOverride("");
-        }, 3000);
-        
-        setInterimTranscript('');
-        speechStartRef.current = null;
-        setIsSilencePending(false);
-        return '';
-      }
-      
-      // Cek dedupe submit
-      if (cleaned === lastSubmittedTextRef.current) return currentFinal;
-      if (isSubmittingRef.current) return currentFinal;
-
-      isSubmittingRef.current = true;
-      lastSubmittedTextRef.current = cleaned;
-
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {}
-      }
-      
+    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+    const cleaned = cleanVoiceTranscript(finalTranscriptRef.current);
+    
+    // Jika kosong atau terlalu pendek (kurang dari 15 karakter), jangan kirim
+    if (cleaned.length < 15) {
+      setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
       setTimeout(() => {
-        setIsListening(false);
-        setIsSilencePending(false);
-      }, 0);
-      setInterimTranscript('');
-      onSubmitRef.current(cleaned);
+        setStatusOverride("");
+      }, 3000);
       
-      return ''; // reset
-    });
+      setInterimTranscript('');
+      speechStartRef.current = null;
+      setIsSilencePending(false);
+      return;
+    }
+    
+    // Verifikasi durasi berbicara minimal 1200ms
+    const speechDuration = speechStartRef.current ? (Date.now() - speechStartRef.current) : 0;
+    if (speechDuration < 1200) {
+      console.log("Speech duration too short:", speechDuration, "ms. Resetting.");
+      setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
+      setTimeout(() => {
+        setStatusOverride("");
+      }, 3000);
+      
+      setInterimTranscript('');
+      speechStartRef.current = null;
+      setIsSilencePending(false);
+      return;
+    }
+    
+    // Cek dedupe submit
+    if (cleaned === lastSubmittedTextRef.current) return;
+    if (isSubmittingRef.current) return;
+
+    isSubmittingRef.current = true;
+    lastSubmittedTextRef.current = cleaned;
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+    
+    setTimeout(() => {
+      setIsListening(false);
+      setIsSilencePending(false);
+    }, 0);
+    setInterimTranscript('');
+    setFinalTranscript('');
+    onSubmitRef.current(cleaned);
   };
 
   const toggleListening = () => {

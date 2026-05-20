@@ -184,27 +184,36 @@ Konteks Tanya-Jawab yang Sedang Aktif:
 
 Tugas Anda adalah menilai kualitas jawaban mahasiswa secara dinamis terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
 
-Panduan Penilaian Skor (Skala 0 - 100):
-- Evaluasi harus dinamis, objektif, dan bernilai variatif antara 0 hingga 100 berdasarkan kualitas jawaban nyata. JANGAN gunakan nilai default 70.
-- Aturan Skor:
+Kriteria Bobot Penilaian (Skala 0 - 100):
+1. Relevansi terhadap pertanyaan aktif: 35%
+2. Ketepatan konsep/metodologi: 25%
+3. Kelengkapan argumen: 20%
+4. Kejelasan dan struktur jawaban: 10%
+5. Kemampuan mempertahankan penelitian: 10%
+
+Aturan Penting Penilaian:
+- Evaluasi harus dinamis, objektif, dan bernilai variatif antara 0 hingga 100 berdasarkan kualitas jawaban nyata. JANGAN gunakan nilai default atau selalu 70.
+- Jika jawaban tidak relevan dengan pertanyaan aktif, skor harus turun signifikan (maksimal 50) meskipun jawaban ditulis sangat panjang lebar.
+- Jika jawaban kosong, sangat pendek (kurang dari 1-2 kalimat pendek), atau hanya noise/tidak bermakna, berikan skor maksimal 40.
+- Jika jawaban panjang tetapi berputar-putar, melantur, atau repetitif tanpa substansi baru, berikan pengurangan nilai yang signifikan (maksimal 55).
+- Panduan Skor Akhir:
   * 0–30: tidak menjawab / sangat tidak relevan (tidak nyambung total) / hanya berisi noise.
   * 31–50: menjawab sebagian tapi meleset dari inti pertanyaan atau argumen sangat lemah.
   * 51–70: cukup relevan tapi kurang detail, kurang bukti ilmiah, atau berputar-putar.
   * 71–85: baik, relevan, terstruktur cukup kuat, dan menyangkut metodologi/konteks penelitian.
   * 86–100: sangat kuat, spesifik, argumentatif, didukung logika ilmiah solid, dan sesuai konteks penelitian.
-- Deteksi Jawaban Repetitif/Berputar-putar: Jika jawaban menggunakan frasa atau argumen yang sama berulang kali (berputar-putar), kurangi skornya secara signifikan. Jangan memberikan nilai tinggi hanya karena jawaban tersebut panjang jika isinya berputar-putar.
 
 Panduan Penulisan Feedback & Bahasa:
 - Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
 - Sediakan followUpQuestion (pertanyaan lanjutan) jika dirasa ada poin penting dari jawaban mahasiswa yang perlu digali lagi (opsional, jika tidak ada kosongkan "").
+- Format feedback strengths (kekuatan), weaknesses (kelemahan), dan suggestion (saran perbaikan) sebagai list yang rapi: gunakan format bullet-point sederhana atau daftar bernomor jika ada banyak poin.
 
 Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 {
   "score": [skor dinamis 0-100 berupa angka],
-  "strengths": "Poin-poin kekuatan jawaban...",
-  "weaknesses": "Poin-poin kelemahan jawaban...",
-  "suggestion": "Saran perbaikan praktis...",
-  "followUpQuestion": "Pertanyaan lanjutan (opsional, kosongkan jika tidak diperlukan)"
+  "strengths": ["kekuatan 1", "kekuatan 2", ...],
+  "weaknesses": ["kelemahan 1", "kelemahan 2", ...],
+  "suggestion": "Saran perbaikan praktis..."
 }`;
 
     const result = await callAIProvider(provider, prompt, 'evaluate');

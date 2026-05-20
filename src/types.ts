@@ -64,4 +64,12 @@ export interface HistoryItem {
   questionCount: number;
   createdAt: string;
   summary?: string;
+  sessionType?: string;
+  field?: string;
+  method?: string;
+  sessionLength?: string;
+  transcript?: TranscriptItem[];
+  strengths?: string[];
+  weaknesses?: string[];
+  nextPractice?: string[];
 }

@@ -13,6 +13,48 @@ import ConfirmModal from '../components/ConfirmModal';
 import SessionTranscript from '../components/SessionTranscript';
 import TextDetailModal from '../components/TextDetailModal';
 
+function normalizeFeedback(evaluation: any) {
+  let score = Number(evaluation.score);
+  if (isNaN(score) || score === 0) {
+    score = 50; 
+  }
+  score = Math.max(0, Math.min(100, score));
+
+  let strengths: string[] = [];
+  if (Array.isArray(evaluation.strengths)) {
+    strengths = evaluation.strengths.map((s: any) => String(s).trim()).filter(Boolean);
+  } else if (typeof evaluation.strengths === 'string') {
+    strengths = evaluation.strengths.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+  }
+  if (strengths.length === 0) {
+    strengths = ["Belum terdeteksi secara jelas."];
+  }
+
+  let weaknesses: string[] = [];
+  if (Array.isArray(evaluation.weaknesses)) {
+    weaknesses = evaluation.weaknesses.map((w: any) => String(w).trim()).filter(Boolean);
+  } else if (typeof evaluation.weaknesses === 'string') {
+    weaknesses = evaluation.weaknesses.split('\n').map((w: string) => w.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+  }
+  if (weaknesses.length === 0) {
+    weaknesses = ["Tidak ada."];
+  }
+
+  let suggestion = evaluation.suggestion || evaluation.saran;
+  if (!suggestion || typeof suggestion !== 'string' || !suggestion.trim()) {
+    suggestion = "Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan.";
+  } else {
+    suggestion = suggestion.trim().replace(/\s+/g, ' ');
+  }
+
+  return {
+    score,
+    strengths,
+    weaknesses,
+    suggestion
+  };
+}
+
 export default function DefenseRoomPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<DefenseSession | null>(null);
@@ -281,7 +323,11 @@ export default function DefenseRoomPage() {
       return;
     }
     
-    const feedbackText = `Skor: ${evaluation.score}.\n\nYang sudah kuat: ${evaluation.strengths.join(' ')}\n\nYang perlu diperbaiki: ${evaluation.weaknesses.join(' ')}\n\nSaran: ${evaluation.suggestion}`;
+    const normEval = normalizeFeedback(evaluation);
+    const strengthsText = normEval.strengths.map((s, idx) => `${idx + 1}) ${s}`).join('\n');
+    const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
+    
+    const feedbackText = `Skor: ${normEval.score}.\n\nKekuatan:\n${strengthsText}\n\nPerlu Diperbaiki:\n${weaknessesText}\n\nSaran:\n${normEval.suggestion}`;
     
     const fbItem: TranscriptItem = {
       id: Date.now().toString(),
@@ -291,7 +337,7 @@ export default function DefenseRoomPage() {
       questionText: activeAnswerQuestionText,
       answerText: activeAnswerText,
       feedback: feedbackText,
-      score: evaluation.score,
+      score: normEval.score,
       createdAt: new Date().toISOString()
     };
     
@@ -392,7 +438,15 @@ export default function DefenseRoomPage() {
         score: finalScore,
         questionCount: latestSession.research.questionCount,
         summary: finalEval.summary,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        sessionType: latestSession.research.sessionType,
+        field: latestSession.research.field,
+        method: latestSession.research.method,
+        sessionLength: latestSession.research.sessionLength,
+        transcript: latestSession.transcript,
+        strengths: finalEval.strengths,
+        weaknesses: finalEval.weaknesses,
+        nextPractice: finalEval.nextPractice || ['Terus berlatih']
       });
       localStorage.setItem('ruanguji_latest_eval', JSON.stringify({
         score: finalScore,
@@ -797,7 +851,7 @@ export default function DefenseRoomPage() {
             {isVoiceMode ? (
               // ================= VOICE MODE CONTROLS =================
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <button onClick={() => setIsVoiceMode(false)} className="btn btn-secondary" style={{ padding: '0.625rem 1rem', borderRadius: '999px', fontSize: '0.875rem' }}>
+                <button onClick={() => setIsVoiceMode(false)} disabled={isGeneratingQuestion || isEvaluatingAnswer} className="btn btn-secondary" style={{ padding: '0.625rem 1rem', borderRadius: '999px', fontSize: '0.875rem' }}>
                   Kembali ke Chat
                 </button>
                 

@@ -14,10 +14,14 @@ export interface ResearchProfile {
   title: string;
   sessionType: string;
   field: string;
+  keywords?: string;
+  researchApproach: string;
   method: string;
   abstract: string;
   concern: string;
   documentPreview?: string;
+  documentName?: string;
+  documentSize?: number;
   examinerMode: ExaminerMode;
   sessionLength: SessionLength;
   questionCount: number;

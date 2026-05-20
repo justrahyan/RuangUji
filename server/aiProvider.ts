@@ -86,17 +86,44 @@ export async function generateDefenseQuestionAI(payload: any) {
   }
 
   try {
+    const researchApproach = payload.research.researchApproach || '';
+    const keywords = payload.research.keywords || '';
+    const documentPreview = payload.research.documentPreview || '';
+
+    // Determine question-type guidance based on researchApproach
+    let approachGuidance = '';
+    const approachLower = researchApproach.toLowerCase();
+    if (approachLower.includes('kualitatif')) {
+      approachGuidance = `PENDEKATAN KUALITATIF: Fokuskan pertanyaan pada validitas data, pemilihan informan/narasumber, teknik triangulasi, proses analisis tematik, kredibilitas temuan, dan kontribusi penelitian terhadap pemahaman fenomena. JANGAN menanyakan metrik statistik, akurasi, atau dataset ML.`;
+    } else if (approachLower.includes('kuantitatif')) {
+      approachGuidance = `PENDEKATAN KUANTITATIF: Pertanyaan dapat mencakup variabel penelitian, instrumen pengumpulan data, validitas dan reliabilitas, teknik sampling, uji statistik, atau interpretasi hasil. Jika tidak ada ML atau model komputasi, JANGAN menanyakan akurasi model, overfitting, atau confusion matrix.`;
+    } else if (approachLower.includes('r&d') || approachLower.includes('pengembangan')) {
+      approachGuidance = `PENDEKATAN R&D/PENGEMBANGAN: Fokuskan pertanyaan pada analisis kebutuhan pengguna, desain produk/sistem, proses validasi ahli, uji coba lapangan, revisi produk, evaluasi kelayakan, dan kebermanfaatan produk bagi pengguna sasaran.`;
+    } else if (approachLower.includes('eksperimen')) {
+      approachGuidance = `PENDEKATAN EKSPERIMEN: Pertanyaan dapat mencakup desain eksperimen, kelompok kontrol/perlakuan, prosedur perlakuan, validitas internal, pengendalian variabel, dan interpretasi hasil uji hipotesis.`;
+    } else if (approachLower.includes('mixed') || approachLower.includes('campuran')) {
+      approachGuidance = `PENDEKATAN MIXED METHODS: Pertanyaan dapat mencakup integrasi data kuantitatif dan kualitatif, alasan pemilihan mixed methods, bagaimana kedua jenis data saling melengkapi, dan keandalan triangulasi.`;
+    } else if (approachLower.includes('literatur') || approachLower.includes('studi literatur')) {
+      approachGuidance = `PENDEKATAN STUDI LITERATUR: Pertanyaan dapat mencakup strategi pencarian literatur, kriteria inklusi/eksklusi sumber, sintesis temuan, celah penelitian yang ditemukan, dan kontribusi kajian literatur ini terhadap bidang ilmu.`;
+    }
+
     const prompt = `Anda berperan sebagai dosen penguji profesional, cerdas, dan kritis dalam sidang akademik di Indonesia.
 Tugas Anda adalah membuat 1 (satu) pertanyaan sidang yang spesifik, mendalam, dan relevan dengan penelitian mahasiswa berikut:
 
-Detail Penelitian Mahasiswa:
+Profil Lengkap Penelitian Mahasiswa:
 - Jenis Sidang: ${payload.research.sessionType || 'Sidang Akhir'}
 - Judul Penelitian: ${payload.research.title}
-- Topik/Bidang: ${payload.research.field || 'Umum'}
-- Metode yang Digunakan: ${payload.research.method}
-- Abstrak: ${payload.research.abstract || 'Tidak disediakan'}
-- Kekhawatiran Utama Mahasiswa: ${payload.research.concern || 'Tidak ada'}
+- Bidang / Topik: ${payload.research.field || 'Umum'}
+- Kata Kunci / Fokus Kajian: ${keywords || 'Tidak disediakan'}
+- Pendekatan Penelitian: ${researchApproach || 'Tidak disebutkan'}
+- Metode / Teknik Utama: ${payload.research.method}
+- Abstrak / Ringkasan: ${payload.research.abstract || 'Tidak disediakan'}
+- Kekhawatiran / Fokus Latihan Mahasiswa: ${payload.research.concern || 'Tidak ada'}
+${documentPreview ? `- Cuplikan Dokumen Penelitian: ${documentPreview.substring(0, 1000)}` : ''}
 - Pertanyaan Sebelumnya (JANGAN DIULANG): ${payload.previousQuestions?.join(' | ') || 'Belum ada'}
+
+Panduan Pendekatan Penelitian:
+${approachGuidance || 'Sesuaikan pertanyaan dengan bidang dan metode penelitian yang disebutkan di atas.'}
 
 Karakter & Mode Penguji:
 Mode saat ini adalah: "${payload.examinerMode}"
@@ -107,22 +134,22 @@ Panduan gaya bertanya berdasarkan Mode Penguji:
 - "metodologi": Fokus sepenuhnya pada keselarasan masalah, tujuan, instrumen, validitas proses, dan kesahihan langkah-langkah penelitian.
 - "statistik": Tanyakan signifikansi data, uji statistik, validasi angka, atau metrik evaluasi. Jika riset bukan penelitian kuantitatif/statistik, arahkan pertanyaan ke validasi data/bukti/hasil, bukan metrik machine learning.
 - "novelty": Fokus pada kebaruan penelitian, kontribusi ilmiah, pembeda nyata dibanding penelitian terdahulu, dan orisinalitas ide.
-- "implementasi": Fokus pada penerapan praktis di lapangan, kegunaan sistem, dampak nyata bagi pengguna, dan potensi hambatan operasional saat diterapkan.
+- "implementasi": Fokus pada penerapan praktis di lapangan, kegunaan hasil penelitian, dampak nyata bagi pengguna atau pemangku kepentingan, dan potensi hambatan operasional saat diterapkan.
 
 Aturan Penting Pertanyaan:
-1. SPESIFIK & RELEVAN: Jangan memberikan pertanyaan template umum. Pertanyaan harus dikaitkan langsung dengan judul, metode, atau abstrak penelitian mahasiswa tersebut.
-2. BAHASA: Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
-3. JANGAN REPETISI: Jangan membuat pertanyaan yang semakna atau mengulang topik pertanyaan sebelumnya (${payload.previousQuestions?.join(', ') || 'tidak ada'}). Jika sebelumnya sudah membahas alasan pemilihan metode, ganti ke aspek lain seperti batasan, validasi, implementasi, atau latar belakang masalah.
-4. KHUSUS METODE SISTEM PAKAR (Expert System, Certainty Factor, Forward Chaining, Decision Tree, dll.): Fokuskan pertanyaan pada basis pengetahuan (knowledge base), keterlibatan dan validasi pakar, representasi rule/aturan, penentuan gejala/penyakit, alur inferensi, penyelesaian konflik nilai keyakinan (Certainty Factor), pembobotan MB/MD, validitas hasil diagnosis, keterbatasan/batasan sistem, atau skenario implementasi di lapangan. JANGAN menanyakan metrik evaluasi machine learning, akurasi model, split data train/test, confusion matrix, atau overfitting kecuali jika sistem pakar tersebut dikombinasikan dengan machine learning.
-5. KHUSUS PENELITIAN NON-TEKNIK (Sosial, Pendidikan, Kesehatan non-ML, Bisnis, Hukum, dll.): Sesuaikan konteks pertanyaan sepenuhnya dengan bidang tersebut (responden, validitas instrumen angket, kode etik, studi kasus, dampak kebijakan, observasi kualitatif). JANGAN menanyakan istilah-istilah informatika/komputer (seperti dataset, akurasi model, sistem, arsitektur database, overfitting) kecuali jika memang relevan.
-6. JANGAN MENANYAKAN METRIK ML JIKA NON-ML: Jangan menanyakan metrik evaluasi, akurasi, dataset size, split data, confusion matrix, overfitting, atau machine learning jika penelitian tidak memakai machine learning.
-7. FORMAT JAWABAN: Berikan pertanyaan singkat dan padat (maksimal 1-2 kalimat).
+1. LINTAS JURUSAN — JANGAN berasumsi penelitian ini dari Teknik Informatika/Komputer jika tidak disebutkan. Sesuaikan sepenuhnya dengan bidang yang tertulis.
+2. SPESIFIK & RELEVAN: Pertanyaan harus dikaitkan langsung dengan judul, metode, bidang, atau abstrak. Jangan memberikan pertanyaan template umum.
+3. BAHASA: Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia.
+4. JANGAN REPETISI: Jangan membuat pertanyaan yang semakna atau mengulang topik pertanyaan sebelumnya.
+5. JANGAN MENANYAKAN METRIK ML (akurasi, F1, dataset, overfitting, confusion matrix, dll.) jika penelitian tidak menyebut machine learning, deep learning, atau pemodelan komputasi.
+6. KHUSUS SISTEM PAKAR: Fokus pada knowledge base, validasi pakar, alur inferensi, Certainty Factor, dan batasan sistem — bukan metrik ML.
+7. FORMAT: Pertanyaan singkat dan padat (maksimal 1–2 kalimat).
 
-Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
+Return ONLY JSON format (tanpa markdown, pastikan JSON valid):
 {
   "question": "Kalimat pertanyaan penguji...",
   "category": "Kategori pertanyaan (misal: metode, novelty, batasan, implementasi, latar_belakang)",
-  "reason": "Alasan singkat mengapa Anda mengajukan pertanyaan ini berdasarkan profil penelitian mahasiswa"
+  "reason": "Alasan singkat mengapa Anda mengajukan pertanyaan ini"
 }`;
 
     const result = await callAIProvider(provider, prompt, 'question');
@@ -174,13 +201,17 @@ export async function evaluateDefenseAnswerAI(payload: any) {
 
 Konteks Penelitian Mahasiswa:
 - Judul Penelitian: ${payload.research.title}
-- Metode: ${payload.research.method}
-- Topik/Bidang: ${payload.research.field || 'Umum'}
+- Pendekatan Penelitian: ${payload.research.researchApproach || 'Tidak disebutkan'}
+- Metode / Teknik: ${payload.research.method}
+- Bidang / Topik: ${payload.research.field || 'Umum'}
+- Kata Kunci: ${payload.research.keywords || 'Tidak disediakan'}
 
 Konteks Tanya-Jawab yang Sedang Aktif:
 - Pertanyaan Penguji yang Aktif: "${payload.question}"
 - Jawaban Mahasiswa untuk Pertanyaan Tersebut: "${payload.answer}"
 - Mode Penguji saat ini: "${payload.examinerMode}"
+
+CATATAN PENTING: Evaluasi jawaban sesuai dengan bidang dan pendekatan penelitian mahasiswa. Jangan menilai berdasarkan standar Teknik Informatika/ML jika penelitian mahasiswa bukan dari bidang tersebut.
 
 Tugas Anda adalah menilai kualitas jawaban mahasiswa secara dinamis terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
 
@@ -300,7 +331,10 @@ export async function generateFinalEvaluationAI(payload: any) {
 
 Data Sesi Penelitian:
 - Judul: ${payload.research.title}
-- Mode Penguji: ${payload.examinerMode}
+- Bidang / Topik: ${payload.research.field || 'Umum'}
+- Pendekatan Penelitian: ${payload.research.researchApproach || 'Tidak disebutkan'}
+- Metode / Teknik: ${payload.research.method || 'Tidak disebutkan'}
+- Mode Penguji: ${payload.research.examinerMode || payload.examinerMode}
 
 Transkrip Tanya-Jawab:
 ${transcriptText}
@@ -309,6 +343,7 @@ Tugas Anda adalah merangkum jalannya sidang dan menilai performa mahasiswa.
 Aturan Skor Akhir & Bahasa:
 - Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
 - Berikan skor akhir (0 - 100) berdasarkan pemahaman jawaban mahasiswa yang tertera di transkrip. JANGAN memberikan skor 0 jika mahasiswa sudah menjawab (nilai baseline minimal 50).
+- Saran latihan (nextPractice) harus relevan dengan bidang/topik penelitian mahasiswa, BUKAN template Teknik Informatika jika bidangnya berbeda.
 
 Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 {
@@ -316,7 +351,7 @@ Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
   "summary": "Ringkasan penilaian akhir keseluruhan sidang dalam Bahasa Indonesia...",
   "strengths": ["Poin kelebihan umum mahasiswa...", "..."],
   "weaknesses": ["Poin kekurangan umum mahasiswa...", "..."],
-  "nextPractice": ["Saran latihan selanjutnya untuk memperdalam pemahaman..."]
+  "nextPractice": ["Saran latihan selanjutnya yang relevan dengan bidang penelitian mahasiswa..."]
 }`;
 
     const result = await callAIProvider(provider, prompt, 'final-evaluation');

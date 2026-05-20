@@ -4,6 +4,7 @@ import PageShell from '../components/PageShell';
 import { ArrowLeft, ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
 import type { ExaminerMode, SessionLength, ResearchProfile, DefenseSession } from '../types';
 import { saveLatestResearch, saveActiveSession } from '../lib/storage';
+import SectionHeader from '../components/SectionHeader';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -205,20 +206,23 @@ export default function SetupPage() {
   // JS
   return (
     <PageShell>
+      <section className="section" style={{ backgroundColor: 'var(--white)', borderBottom: '1px solid var(--border-color)', padding: '2.5rem 0 0 0' }}>
+        <div className="container">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
+            <div style={{ flex: 1, minWidth: '300px' }}>
+              <SectionHeader
+                label="Siapkan Sidangmu"
+                title="Bangun simulasi sidang yang sesuai dengan penelitian Anda."
+                subtitle="Isi informasi utama penelitian, unggah dokumen pendukung bila perlu, lalu pilih mode penguji untuk memulai latihan."
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="section-soft" style={{ minHeight: 'calc(100vh - 73px)', padding: '2rem 0 3.5rem 0' }}>
         {/* Wider container: 1120px */}
         <div className="container" style={{ maxWidth: '1120px' }}>
-
-          {/* Page Header */}
-          <div className="fade-up" style={{ marginBottom: '1.75rem' }}>
-            <Link to="/" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', marginBottom: '1.25rem', fontSize: '0.875rem' }}>
-              <ArrowLeft size={16} /> Kembali
-            </Link>
-            <h1 className="section-title" style={{ marginBottom: '0.375rem' }}>Siapkan Sidangmu</h1>
-            <p className="section-desc" style={{ margin: 0 }}>
-              Lengkapi informasi penelitian agar simulasi pertanyaan menjadi lebih relevan untuk bidang Anda.
-            </p>
-          </div>
 
           {/* Card */}
           <div className="card fade-up delay-1 soft-shadow" style={{ padding: 0, overflow: 'hidden' }}>

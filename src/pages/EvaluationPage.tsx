@@ -1,30 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageShell from '../components/PageShell';
-import { Award, CheckCircle2, AlertCircle } from 'lucide-react';
+import EvaluationResultLayout from '../components/EvaluationResultLayout';
 import { getHistory } from '../lib/storage';
 
 export default function EvaluationPage() {
   const [evalData, setEvalData] = useState<any>(null);
 
   useEffect(() => {
-    // Try to get latest eval from localStorage
     const savedEval = localStorage.getItem('ruanguji_latest_eval');
     if (savedEval) {
       setEvalData(JSON.parse(savedEval));
-    } else {
-      // Fallback to latest history item
-      const history = getHistory();
-      if (history.length > 0) {
-        const last = history[0];
-        setEvalData({
-          score: last.score,
-          summary: last.summary || 'Selesai simulasi.',
-          strengths: ['Penyelesaian sesi tepat waktu'],
-          weaknesses: ['Perlu analisis riwayat lebih lanjut'],
-          nextPractice: ['Coba mode penguji lain']
-        });
-      }
+      return;
+    }
+
+    const history = getHistory();
+    if (history.length > 0) {
+      const last = history[0];
+      setEvalData({
+        score: last.score,
+        summary: last.summary || 'Simulasi selesai.',
+        strengths: last.strengths || ['Penyelesaian sesi tepat waktu'],
+        weaknesses: last.weaknesses || ['Perlu analisis riwayat lebih lanjut'],
+        nextPractice: last.nextPractice || ['Coba mode penguji lain'],
+      });
     }
   }, []);
 
@@ -46,84 +45,25 @@ export default function EvaluationPage() {
 
   return (
     <PageShell>
-      <div className="section-soft" style={{ minHeight: 'calc(100vh - 73px)', padding: '1.25rem 1rem' }}>
-        <div className="container" style={{ maxWidth: '1000px' }}>
-          
-          <div className="fade-up" style={{ textAlign: 'left', marginBottom: '1.25rem' }}>
-            <h1 className="section-title" style={{ marginBottom: '0.25rem', fontSize: '1.6rem' }}>Evaluasi Akhir</h1>
-            <p className="section-desc" style={{ margin: 0, fontSize: '0.875rem' }}>Hasil performa dan analisis kesiapan Anda selama sesi simulasi.</p>
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }} className="eval-grid">
-            
-            {/* Score Card */}
-            <div className="card fade-up delay-1 soft-shadow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem 1.25rem', textAlign: 'center' }}>
-              <div style={{ width: '84px', height: '84px', borderRadius: '50%', border: '6px solid var(--primary-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem', backgroundColor: 'var(--blue-soft)' }}>
-                <span style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--primary-blue)', lineHeight: 1 }}>{evalData.score}</span>
-              </div>
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 800, marginBottom: '0.375rem' }}>
-                {evalData.score >= 80 ? 'Sangat Baik' : evalData.score >= 60 ? 'Cukup Baik' : 'Perlu Latihan'}
-              </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.4 }}>{evalData.summary}</p>
-              
-              <div style={{ display: 'flex', gap: '0.5rem', width: '100%', flexDirection: 'column' }} className="eval-actions">
-                <Link to="/setup" className="btn btn-primary" style={{ width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
-                  Latihan Lagi
-                </Link>
-                <Link to="/history" className="btn btn-secondary" style={{ width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
-                  Lihat Riwayat
-                </Link>
-              </div>
-            </div>
- 
-            <div style={{ display: 'grid', gap: '1rem', alignContent: 'start' }}>
-              
-              {/* Strengths & Weaknesses */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-                <div className="card fade-up delay-3" style={{ padding: '1rem', borderTop: '4px solid #16a34a' }}>
-                  <h4 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.5rem', color: '#16a34a', fontSize: '0.875rem' }}>
-                    <CheckCircle2 size={14} /> Kekuatan
-                  </h4>
-                  <ul style={{ paddingLeft: '1.125rem', color: 'var(--text-secondary)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', margin: 0 }}>
-                    {evalData.strengths.map((s: string, i: number) => <li key={i}>{s}</li>)}
-                  </ul>
-                </div>
-                <div className="card fade-up delay-4" style={{ padding: '1rem', borderTop: '4px solid #ea580c' }}>
-                  <h4 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.5rem', color: '#ea580c', fontSize: '0.875rem' }}>
-                    <AlertCircle size={14} /> Area Perbaikan
-                  </h4>
-                  <ul style={{ paddingLeft: '1.125rem', color: 'var(--text-secondary)', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', margin: 0 }}>
-                    {evalData.weaknesses.map((w: string, i: number) => <li key={i}>{w}</li>)}
-                  </ul>
-                </div>
-              </div>
- 
-              {/* Next Practice */}
-              <div className="card fade-up delay-2 soft-shadow" style={{ padding: '1.25rem' }}>
-                <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                  <Award size={16} color="var(--primary-blue)" /> Saran Latihan Selanjutnya
-                </h3>
-                <div style={{ display: 'grid', gap: '0.5rem' }}>
-                  {evalData.nextPractice.map((p: string, i: number) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-soft)', padding: '0.5rem 0.75rem', borderRadius: '8px' }}>
-                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--primary-blue)', flexShrink: 0 }}></div>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)' }}>{p}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
- 
-            </div>
-          </div>
-        </div>
-      </div>
-      <style>{`
-        @media (min-width: 768px) {
-          .eval-grid {
-            grid-template-columns: 1fr 2fr !important;
-          }
+      <EvaluationResultLayout
+        title="Evaluasi Akhir"
+        subtitle="Hasil performa dan analisis kesiapan Anda selama sesi simulasi."
+        score={evalData.score}
+        summary={evalData.summary}
+        strengths={evalData.strengths}
+        weaknesses={evalData.weaknesses}
+        nextPractice={evalData.nextPractice}
+        actions={
+          <>
+            <Link to="/setup" className="btn btn-primary" style={{ width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
+              Latihan Lagi
+            </Link>
+            <Link to="/history" className="btn btn-secondary" style={{ width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
+              Lihat Riwayat
+            </Link>
+          </>
         }
-      `}</style>
+      />
     </PageShell>
   );
 }

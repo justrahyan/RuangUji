@@ -119,7 +119,8 @@ Profil Lengkap Penelitian Mahasiswa:
 - Metode / Teknik Utama: ${payload.research.method}
 - Abstrak / Ringkasan: ${payload.research.abstract || 'Tidak disediakan'}
 - Kekhawatiran / Fokus Latihan Mahasiswa: ${payload.research.concern || 'Tidak ada'}
-${documentPreview ? `- Cuplikan Dokumen Penelitian: ${documentPreview.substring(0, 1000)}` : ''}
+${documentPreview ? `- Konteks Dokumen Tambahan (gunakan untuk memahami judul, metode, data, dan kontribusi penelitian jika abstrak kurang lengkap):
+${documentPreview.substring(0, 2000)}` : ''}
 - Pertanyaan Sebelumnya (JANGAN DIULANG): ${payload.previousQuestions?.join(' | ') || 'Belum ada'}
 
 Panduan Pendekatan Penelitian:
@@ -205,6 +206,8 @@ Konteks Penelitian Mahasiswa:
 - Metode / Teknik: ${payload.research.method}
 - Bidang / Topik: ${payload.research.field || 'Umum'}
 - Kata Kunci: ${payload.research.keywords || 'Tidak disediakan'}
+${payload.research.documentPreview ? `- Konteks Dokumen Tambahan (gunakan jika abstrak kurang lengkap untuk memahami metode, data, dan kontribusi):
+${payload.research.documentPreview.substring(0, 1500)}` : ''}
 
 Konteks Tanya-Jawab yang Sedang Aktif:
 - Pertanyaan Penguji yang Aktif: "${payload.question}"

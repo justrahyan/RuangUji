@@ -63,10 +63,13 @@ async function fetchWithTimeout(url: string, options: any, timeoutMs = 20000): P
 }
 
 export async function generateDefenseQuestionAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'local';
+  const provider = process.env.AI_PROVIDER || 'gemini';
   console.log(`[AI] question request started (provider=${provider})`);
   
-  if (provider === 'local' || !['gemini', 'openai', 'ollama'].includes(provider)) {
+  if (provider === 'local' || provider !== 'gemini') {
+    if (provider !== 'local') {
+      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
+    }
     const localQuestion = generateQuestion(
       payload.research,
       payload.examinerMode,
@@ -83,11 +86,11 @@ export async function generateDefenseQuestionAI(payload: any) {
   }
 
   try {
-    const prompt = `Anda berperan sebagai dosen penguji profesional, cerdas, dan kritis dalam sidang akademik.
+    const prompt = `Anda berperan sebagai dosen penguji profesional, cerdas, dan kritis dalam sidang akademik di Indonesia.
 Tugas Anda adalah membuat 1 (satu) pertanyaan sidang yang spesifik, mendalam, dan relevan dengan penelitian mahasiswa berikut:
 
 Detail Penelitian Mahasiswa:
-- Jenis Sidang: ${payload.research.sessionType || 'Skripsi'}
+- Jenis Sidang: ${payload.research.sessionType || 'Sidang Akhir'}
 - Judul Penelitian: ${payload.research.title}
 - Topik/Bidang: ${payload.research.field || 'Umum'}
 - Metode yang Digunakan: ${payload.research.method}
@@ -102,16 +105,18 @@ Panduan gaya bertanya berdasarkan Mode Penguji:
 - "kritis": Pertanyaan tajam, mendalam, objektif, menanyakan landasan logis di balik keputusan desain/penelitian.
 - "killer": Tekankan celah penelitian, tanyakan hal-hal menekan secara konfrontatif untuk menguji ketahanan mental dan keyakinan argumen mahasiswa.
 - "metodologi": Fokus sepenuhnya pada keselarasan masalah, tujuan, instrumen, validitas proses, dan kesahihan langkah-langkah penelitian.
-- "statistik": Tanyakan signifikansi data, uji statistik, validasi angka, atau metrik evaluasi. HANYA gunakan mode ini jika penelitian tersebut menggunakan metode kuantitatif/eksperimental yang relevan dengan data statistik.
+- "statistik": Tanyakan signifikansi data, uji statistik, validasi angka, atau metrik evaluasi. Jika riset bukan penelitian kuantitatif/statistik, arahkan pertanyaan ke validasi data/bukti/hasil, bukan metrik machine learning.
 - "novelty": Fokus pada kebaruan penelitian, kontribusi ilmiah, pembeda nyata dibanding penelitian terdahulu, dan orisinalitas ide.
 - "implementasi": Fokus pada penerapan praktis di lapangan, kegunaan sistem, dampak nyata bagi pengguna, dan potensi hambatan operasional saat diterapkan.
 
 Aturan Penting Pertanyaan:
-1. SPESIFIK & RELEVAN: Jangan memberikan pertanyaan template umum seperti "Apa tujuan penelitian Anda?". Pertanyaan harus dikaitkan langsung dengan judul, metode, atau abstrak penelitian mahasiswa tersebut.
-2. KHUSUS SISTEM PAKAR: Jika metode/judul berkaitan dengan "Sistem Pakar" (Expert System), "Certainty Factor", "Forward Chaining", dll., tanyakan mengenai keterlibatan pakar, penyusunan basis pengetahuan (knowledge base), representasi rule/aturan, penentuan gejala/penyakit, alur inferensi, validasi kebenaran rule oleh pakar, penyelesaian konflik nilai keyakinan (Certainty Factor), keterbatasan sistem, atau skenario implementasi di lapangan. JANGAN menanyakan akurasi model machine learning, split data train/test, confusion matrix, atau overfitting kecuali jika sistem pakar tersebut dikombinasikan dengan machine learning.
-3. KHUSUS PENELITIAN NON-TEKNIK (Sosial, Pendidikan, Kesehatan, Bisnis, Hukum, dll.): Sesuaikan konteks pertanyaan sepenuhnya dengan bidang tersebut (responden, validitas instrumen angket, kode etik, studi kasus, dampak kebijakan, observasi kualitatif). JANGAN menanyakan istilah-istilah informatika/komputer (seperti dataset, akurasi model, sistem, arsitektur database) kecuali jika relevan.
-4. JANGAN REPETISI: Jangan membuat pertanyaan yang semakna atau mengulang topik pertanyaan sebelumnya (${payload.previousQuestions?.join(', ') || 'tidak ada'}). Jika sebelumnya sudah membahas alasan pemilihan metode, ganti ke aspek lain seperti batasan, validasi, implementasi, atau latar belakang masalah.
-5. FORMAT JAWABAN: Berikan pertanyaan singkat dan padat (maksimal 1-2 kalimat).
+1. SPESIFIK & RELEVAN: Jangan memberikan pertanyaan template umum. Pertanyaan harus dikaitkan langsung dengan judul, metode, atau abstrak penelitian mahasiswa tersebut.
+2. BAHASA: Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
+3. JANGAN REPETISI: Jangan membuat pertanyaan yang semakna atau mengulang topik pertanyaan sebelumnya (${payload.previousQuestions?.join(', ') || 'tidak ada'}). Jika sebelumnya sudah membahas alasan pemilihan metode, ganti ke aspek lain seperti batasan, validasi, implementasi, atau latar belakang masalah.
+4. KHUSUS METODE SISTEM PAKAR (Expert System, Certainty Factor, Forward Chaining, Decision Tree, dll.): Fokuskan pertanyaan pada basis pengetahuan (knowledge base), keterlibatan dan validasi pakar, representasi rule/aturan, penentuan gejala/penyakit, alur inferensi, penyelesaian konflik nilai keyakinan (Certainty Factor), pembobotan MB/MD, validitas hasil diagnosis, keterbatasan/batasan sistem, atau skenario implementasi di lapangan. JANGAN menanyakan metrik evaluasi machine learning, akurasi model, split data train/test, confusion matrix, atau overfitting kecuali jika sistem pakar tersebut dikombinasikan dengan machine learning.
+5. KHUSUS PENELITIAN NON-TEKNIK (Sosial, Pendidikan, Kesehatan non-ML, Bisnis, Hukum, dll.): Sesuaikan konteks pertanyaan sepenuhnya dengan bidang tersebut (responden, validitas instrumen angket, kode etik, studi kasus, dampak kebijakan, observasi kualitatif). JANGAN menanyakan istilah-istilah informatika/komputer (seperti dataset, akurasi model, sistem, arsitektur database, overfitting) kecuali jika memang relevan.
+6. JANGAN MENANYAKAN METRIK ML JIKA NON-ML: Jangan menanyakan metrik evaluasi, akurasi, dataset size, split data, confusion matrix, overfitting, atau machine learning jika penelitian tidak memakai machine learning.
+7. FORMAT JAWABAN: Berikan pertanyaan singkat dan padat (maksimal 1-2 kalimat).
 
 Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 {
@@ -144,10 +149,13 @@ Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 }
 
 export async function evaluateDefenseAnswerAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'local';
+  const provider = process.env.AI_PROVIDER || 'gemini';
   console.log(`[AI] evaluate request started (provider=${provider})`);
 
-  if (provider === 'local' || !['gemini', 'openai', 'ollama'].includes(provider)) {
+  if (provider === 'local' || provider !== 'gemini') {
+    if (provider !== 'local') {
+      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
+    }
     const localEval = evaluateAnswer(
       payload.question,
       payload.answer,
@@ -169,22 +177,23 @@ Konteks Penelitian Mahasiswa:
 - Metode: ${payload.research.method}
 - Topik/Bidang: ${payload.research.field || 'Umum'}
 
-Konteks Tanya-Jawab:
-- Pertanyaan Penguji: "${payload.question}"
-- Jawaban Mahasiswa: "${payload.answer}"
+Konteks Tanya-Jawab yang Sedang Aktif:
+- Pertanyaan Penguji yang Aktif: "${payload.question}"
+- Jawaban Mahasiswa untuk Pertanyaan Tersebut: "${payload.answer}"
 - Mode Penguji saat ini: "${payload.examinerMode}"
 
-Tugas Anda adalah menilai kualitas jawaban mahasiswa dan memberikan feedback konstruktif.
+Tugas Anda adalah menilai kualitas jawaban mahasiswa terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
 
 Panduan Penilaian Skor (Skala 0 - 100):
-- JANGAN PERNAH memberikan skor 0 kecuali jika jawaban kosong, sama sekali tidak relevan dengan pertanyaan (tidak nyambung), atau hanya berisi teks sampah/noise.
-- Jika mahasiswa berusaha menjawab namun jawaban kurang terstruktur, tidak rapi, atau terlalu singkat: Berikan skor minimal 40 (misal 40-54).
+- JANGAN PERNAH memberikan skor 0 kecuali jika jawaban kosong, sama sekali tidak relevan dengan pertanyaan (tidak nyambung total), atau hanya berisi teks sampah/noise.
+- Jika mahasiswa berusaha menjawab namun jawaban kurang kuat, tidak terstruktur, tidak rapi, atau terlalu singkat: Berikan skor minimal 40 (misal 40-54).
 - Jika jawaban relevan sebagian, menjawab sebagian pertanyaan, namun penjelasan kurang mendalam: Berikan skor 55-75.
 - Jika jawaban relevan, jelas, terstruktur, dan spesifik membahas konteks penelitiannya: Berikan skor 76-90.
 - Jika jawaban sangat kuat, meyakinkan, didukung argumen ilmiah yang solid, dan menunjukkan penguasaan materi yang luar biasa: Berikan skor 91-100.
-- Deteksi Jawaban Repetitif: Jika jawaban menggunakan frasa atau argumen yang sama berulang kali (berputar-putar), kurangi skornya. Jangan memberikan nilai tinggi hanya karena jawaban tersebut panjang jika isinya berputar-putar.
+- Deteksi Jawaban Repetitif/Berputar-putar: Jika jawaban menggunakan frasa atau argumen yang sama berulang kali (berputar-putar), kurangi skornya. Jangan memberikan nilai tinggi hanya karena jawaban tersebut panjang jika isinya berputar-putar.
 
-Panduan Penulisan Feedback:
+Panduan Penulisan Feedback & Bahasa:
+- Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
 - Berikan kekuatan (strengths) dan kelemahan (weaknesses) dalam bentuk daftar ringkas (array of strings).
 - Berikan saran perbaikan (suggestion) praktis yang to-the-point agar jawaban berikutnya lebih baik.
 - Sediakan followUpQuestion (pertanyaan lanjutan) jika dirasa ada poin penting dari jawaban mahasiswa yang perlu digali lagi (opsional, jika tidak ada kosongkan "").
@@ -238,10 +247,13 @@ Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 }
 
 export async function generateFinalEvaluationAI(payload: any) {
-  const provider = process.env.AI_PROVIDER || 'local';
+  const provider = process.env.AI_PROVIDER || 'gemini';
   console.log(`[AI] final evaluation request started (provider=${provider})`);
   
-  if (provider === 'local' || !['gemini', 'openai', 'ollama'].includes(provider)) {
+  if (provider === 'local' || provider !== 'gemini') {
+    if (provider !== 'local') {
+      console.warn(`[AI Provider] Provider "${provider}" is not recognized. Falling back to local.`);
+    }
     const sessionObj = {
       research: payload.research,
       transcript: payload.transcript
@@ -272,13 +284,14 @@ Transkrip Tanya-Jawab:
 ${transcriptText}
 
 Tugas Anda adalah merangkum jalannya sidang dan menilai performa mahasiswa.
-Aturan Skor Akhir:
+Aturan Skor Akhir & Bahasa:
+- Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
 - Berikan skor akhir (0 - 100) berdasarkan pemahaman jawaban mahasiswa yang tertera di transkrip. JANGAN memberikan skor 0 jika mahasiswa sudah menjawab (nilai baseline minimal 50).
 
 Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 {
   "score": 80,
-  "summary": "Ringkasan penilaian akhir keseluruhan sidang...",
+  "summary": "Ringkasan penilaian akhir keseluruhan sidang dalam Bahasa Indonesia...",
   "strengths": ["Poin kelebihan umum mahasiswa...", "..."],
   "weaknesses": ["Poin kekurangan umum mahasiswa...", "..."],
   "nextPractice": ["Saran latihan selanjutnya untuk memperdalam pemahaman..."]
@@ -332,40 +345,34 @@ async function callAIProvider(provider: string, prompt: string, type: string): P
       throw new Error('Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.');
     }
     return await callGemini(prompt, type);
-  } else if (provider === 'openai') {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey || apiKey.trim() === '') {
-      throw new Error('OpenAI API key is not configured. Please add OPENAI_API_KEY to your .env file.');
-    }
-    return await callOpenAI(prompt, type);
-  } else if (provider === 'ollama') {
-    return await callOllama(prompt, type);
   }
   throw new Error(`Unknown AI Provider configured: "${provider}"`);
 }
 
 async function callGemini(prompt: string, type: string) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL;
-  if (!apiKey) throw new Error('Missing API Key');
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash';
+  if (!apiKey) throw new Error('Missing Gemini API Key');
+
+  console.log(`[AI Provider] provider=gemini type=${type} model=${primaryModel}`);
 
   try {
     return await executeGeminiRequest(apiKey, primaryModel, prompt);
   } catch (error: any) {
-    const errorMsg = String(error.message || error);
-    const isRetryable = isProviderUnavailableError(error) || errorMsg.includes('high demand') || errorMsg.includes('RESOURCE_EXHAUSTED');
-    
-    if (isRetryable && fallbackModel) {
+    if (fallbackModel) {
       console.warn(`[AI Provider] Gemini primary model ${primaryModel} failed (${error.message}). Retrying with fallback model ${fallbackModel}...`);
+      console.log(`[AI Provider] provider=gemini type=${type} model=${fallbackModel}`);
       try {
         return await executeGeminiRequest(apiKey, fallbackModel, prompt);
       } catch (fallbackError: any) {
-        console.error(`[AI Provider] Gemini fallback model ${fallbackModel} also failed: ${fallbackError.message}`);
+        console.error(`[AI Provider] Gemini fallback model failed, using local fallback: ${fallbackError.message}`);
         throw fallbackError;
       }
+    } else {
+      console.error(`[AI Provider] Gemini failed, using local fallback: ${error.message}`);
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -377,7 +384,7 @@ async function executeGeminiRequest(apiKey: string, model: string, prompt: strin
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.7,
+        temperature: 0.75,
         responseMimeType: 'application/json'
       }
     })
@@ -394,74 +401,4 @@ async function executeGeminiRequest(apiKey: string, model: string, prompt: strin
   const parsed = safeJsonParse(text);
   parsed.provider = 'gemini';
   return parsed;
-}
-
-async function callOpenAI(prompt: string, type: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  if (!apiKey) throw new Error('Missing API Key');
-
-  try {
-    const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.7
-      })
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`OpenAI HTTP Error ${res.status}: ${errorText}`);
-    }
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error('Empty response content from OpenAI API');
-
-    const parsed = safeJsonParse(text);
-    parsed.provider = 'openai';
-    return parsed;
-  } catch (error: any) {
-    console.error(`[AI Provider] OpenAI Call Failure: ${error.message}`);
-    throw error;
-  }
-}
-
-async function callOllama(prompt: string, type: string) {
-  const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-  const model = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
-
-  try {
-    const res = await fetchWithTimeout(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        format: 'json'
-      })
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Ollama HTTP Error ${res.status}: ${errorText}`);
-    }
-    const data = await res.json();
-    const text = data.message?.content;
-    if (!text) throw new Error('Empty response content from Ollama API');
-
-    const parsed = safeJsonParse(text);
-    parsed.provider = 'ollama';
-    return parsed;
-  } catch (error: any) {
-    console.error(`[AI Provider] Ollama Call Failure: ${error.message}`);
-    throw error;
-  }
 }

@@ -44,12 +44,12 @@ function cleanVoiceTranscript(text: string): string {
     }
   } catch (e) {}
 
-  // Batasi maksimal 700 karakter
-  if (finalStr.length > 700) {
-    const truncated = finalStr.substring(0, 700);
+  // Batasi maksimal 1400 karakter (antara 1200 - 1600 karakter)
+  if (finalStr.length > 1400) {
+    const truncated = finalStr.substring(0, 1400);
     // Coba potong di tanda baca terakhir yang utuh
     const lastPunctuation = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf(','), truncated.lastIndexOf('?'));
-    if (lastPunctuation > 500) {
+    if (lastPunctuation > 1000) {
       finalStr = truncated.substring(0, lastPunctuation + 1) + '...';
     } else {
       finalStr = truncated + '...';
@@ -75,6 +75,9 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   const [manualText, setManualText] = useState('');
   const [browserSupported, setBrowserSupported] = useState(true);
   
+  const [isSilencePending, setIsSilencePending] = useState(false);
+  const [statusOverride, setStatusOverride] = useState('');
+  
   const recognitionRef = useRef<any>(null);
   const silenceTimeoutRef = useRef<any>(null);
   
@@ -82,11 +85,20 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   const isSubmittingRef = useRef(false);
   const lastSubmittedTextRef = useRef('');
   const isListeningRef = useRef(false);
+  
+  // Ref untuk mendeteksi durasi suara
+  const speechStartRef = useRef<number | null>(null);
 
   // Sync isListening to ref to avoid effect dependency re-runs
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  // Keep onSubmit reference up to date to avoid closures
+  const onSubmitRef = useRef(onSubmit);
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -105,9 +117,10 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       let interim = '';
       let finalStr = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      // Rebuild seluruh transcript dari 0 untuk mencegah hasil berulang
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalStr += event.results[i][0].transcript;
+          finalStr += event.results[i][0].transcript + ' ';
         } else {
           interim += event.results[i][0].transcript;
         }
@@ -115,24 +128,29 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       
       setInterimTranscript(interim);
       
-      if (finalStr) {
-        setFinalTranscript(prev => {
-          const combined = prev + ' ' + finalStr;
-          return cleanVoiceTranscript(combined);
-        });
+      // Catat kapan user mulai berbicara
+      if ((finalStr || interim) && speechStartRef.current === null) {
+        speechStartRef.current = Date.now();
       }
       
-      // Silence detection logic: ~2200ms after last result
+      if (finalStr) {
+        setFinalTranscript(cleanVoiceTranscript(finalStr));
+      }
+      
+      // Silence detection logic: ~2200ms setelah user selesai berbicara
       if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
       
       if (!interim) {
+        setIsSilencePending(true);
         silenceTimeoutRef.current = setTimeout(() => {
           triggerSubmit();
         }, 2200);
       } else {
+        setIsSilencePending(false);
+        // Safety timeout jika browser tidak mendeteksi final state dalam waktu lama
         silenceTimeoutRef.current = setTimeout(() => {
           triggerSubmit();
-        }, 3000);
+        }, 5000);
       }
     };
 
@@ -143,6 +161,7 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       if (event.error === 'not-allowed' || event.error === 'network') {
         setTimeout(() => {
           setIsListening(false);
+          setIsSilencePending(false);
         }, 0);
       }
     };
@@ -154,11 +173,13 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
         } catch (e) {
           setTimeout(() => {
             setIsListening(false);
+            setIsSilencePending(false);
           }, 0);
         }
       } else {
         setTimeout(() => {
           setIsListening(false);
+          setIsSilencePending(false);
         }, 0);
       }
     };
@@ -182,8 +203,33 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
     setFinalTranscript(currentFinal => {
       const cleaned = cleanVoiceTranscript(currentFinal);
       
-      // Jika kosong atau kurang dari 12 karakter, abaikan (mungkin noise)
-      if (cleaned.length < 12) return currentFinal;
+      // Jika kosong atau terlalu pendek (kurang dari 15 karakter), jangan kirim
+      if (cleaned.length < 15) {
+        setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
+        setTimeout(() => {
+          setStatusOverride("");
+        }, 3000);
+        
+        setInterimTranscript('');
+        speechStartRef.current = null;
+        setIsSilencePending(false);
+        return '';
+      }
+      
+      // Verifikasi durasi berbicara minimal 1200ms
+      const speechDuration = speechStartRef.current ? (Date.now() - speechStartRef.current) : 0;
+      if (speechDuration < 1200) {
+        console.log("Speech duration too short:", speechDuration, "ms. Resetting.");
+        setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
+        setTimeout(() => {
+          setStatusOverride("");
+        }, 3000);
+        
+        setInterimTranscript('');
+        speechStartRef.current = null;
+        setIsSilencePending(false);
+        return '';
+      }
       
       // Cek dedupe submit
       if (cleaned === lastSubmittedTextRef.current) return currentFinal;
@@ -200,9 +246,10 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       
       setTimeout(() => {
         setIsListening(false);
+        setIsSilencePending(false);
       }, 0);
       setInterimTranscript('');
-      onSubmit(cleaned);
+      onSubmitRef.current(cleaned);
       
       return ''; // reset
     });
@@ -216,6 +263,7 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
         } catch (e) {}
       }
       setIsListening(false);
+      setIsSilencePending(false);
       
       if (finalTranscript.trim()) {
         triggerSubmit();
@@ -225,6 +273,9 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       setInterimTranscript('');
       isSubmittingRef.current = false;
       lastSubmittedTextRef.current = '';
+      speechStartRef.current = null;
+      setIsSilencePending(false);
+      setStatusOverride('');
       
       try {
         recognitionRef.current.start();
@@ -237,7 +288,7 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
 
   const handleManualSubmit = () => {
     if (manualText.trim()) {
-      onSubmit(manualText.trim());
+      onSubmitRef.current(manualText.trim());
       setManualText('');
     }
   };
@@ -270,18 +321,16 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       );
     }
 
+    let statusLabel = "Mendengarkan...";
+    if (statusOverride) statusLabel = statusOverride;
+
     return (
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
         {isListening && (
           <div className="fade-up" style={{ backgroundColor: 'var(--white)', padding: '0.5rem 1rem', borderRadius: '999px', border: '1px solid var(--border-color)', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', animation: 'orbPulse 1s infinite' }}></div>
-            Mendengarkan...
+            {statusLabel}
           </div>
-        )}
-        {isListening && (interimTranscript || finalTranscript) && (
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            "{interimTranscript || finalTranscript}"
-          </p>
         )}
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {isListening ? (
@@ -304,13 +353,24 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   }
 
   // Voice Stage mode
-  let statusText = "Siap menguji";
-  if (isThinking) statusText = "Menganalisis jawaban...";
-  else if (isListening) {
-    if (interimTranscript || finalTranscript) statusText = "Menunggu hening...";
-    else statusText = "Sedang mendengarkan...";
+  let statusText = "Silakan jawab...";
+  if (statusOverride) {
+    statusText = statusOverride;
+  } else if (isThinking) {
+    statusText = "Menganalisis jawaban...";
+  } else if (isListening) {
+    if (interimTranscript || finalTranscript) {
+      if (isSilencePending) {
+        statusText = "Hening terdeteksi, menyiapkan jawaban...";
+      } else {
+        statusText = "Mendengarkan jawaban...";
+      }
+    } else {
+      statusText = "Mendengarkan...";
+    }
+  } else if (disabled) {
+    statusText = "Menganalisis jawaban...";
   }
-  else if (disabled) statusText = "Penguji sedang merespons...";
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>

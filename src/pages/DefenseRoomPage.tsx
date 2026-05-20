@@ -56,6 +56,14 @@ export default function DefenseRoomPage() {
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isEvaluatingAnswer, setIsEvaluatingAnswer] = useState(false);
   const [aiStatus, setAiStatus] = useState<'idle' | 'generating-question' | 'evaluating' | 'fallback' | 'error'>('idle');
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  const toggleItemExpand = (id: string) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
 
   const questionRequestIdRef = useRef(0);
   const hasUserAnsweredRef = useRef(false);
@@ -214,7 +222,7 @@ export default function DefenseRoomPage() {
   };
 
   const handleAnswerSubmit = async (answerText: string) => {
-    if (!session || !answerText.trim() || !currentQuestion) return;
+    if (!session || !answerText.trim() || !currentQuestion || isGeneratingQuestion || isEvaluatingAnswer) return;
     
     hasUserAnsweredRef.current = true;
     stopSpeaking();
@@ -302,7 +310,7 @@ export default function DefenseRoomPage() {
   };
 
   const handleNextQuestion = () => {
-    if (!session) return;
+    if (!session || isGeneratingQuestion || isEvaluatingAnswer) return;
     stopSpeaking();
     
     if (session.currentQuestionIndex + 1 >= session.research.questionCount) {
@@ -620,9 +628,25 @@ export default function DefenseRoomPage() {
                 ) : activeQuestion ? (
                   <div className="voice-question-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                     <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>Pertanyaan Aktif</p>
-                    <p className="voice-question-text" style={{ fontSize: '15px', color: 'var(--text-primary)', lineHeight: 1.55, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{activeQuestion}</p>
+                    <p className="voice-question-text" style={expandedItems[activeQuestionItem?.id || ''] ? {
+                      fontSize: '15px',
+                      color: 'var(--text-primary)',
+                      lineHeight: 1.55,
+                      whiteSpace: 'pre-wrap'
+                    } : {
+                      fontSize: '15px',
+                      color: 'var(--text-primary)',
+                      lineHeight: 1.55,
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: 3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>{activeQuestion}</p>
                     {activeQuestion.length > 130 && (
-                      <button onClick={() => openDetailModal('Pertanyaan Aktif', activeQuestion)} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '6px', padding: 0 }}>Lihat lengkap</button>
+                      <button onClick={() => toggleItemExpand(activeQuestionItem?.id || '')} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '6px', padding: 0 }}>
+                        {expandedItems[activeQuestionItem?.id || ''] ? 'Sembunyikan' : 'Lihat lengkap'}
+                      </button>
                     )}
                   </div>
                 ) : null}
@@ -644,9 +668,25 @@ export default function DefenseRoomPage() {
                             <Bot size={16} color="var(--text-muted)" />
                             <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Penguji</p>
                           </div>
-                          <p className="line-clamp-4" style={{ color: '#0f172a', lineHeight: 1.6, fontSize: '0.9375rem' }}>{item.content}</p>
+                          <p style={expandedItems[item.id] ? {
+                            color: '#0f172a',
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            whiteSpace: 'pre-wrap'
+                          } : {
+                            color: '#0f172a',
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            display: '-webkit-box',
+                            WebkitBoxOrient: 'vertical',
+                            WebkitLineClamp: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>{item.content}</p>
                           {item.content.length > 200 && (
-                            <button onClick={() => openDetailModal('Penguji', item.content)} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>Lihat lengkap</button>
+                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
+                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -655,19 +695,35 @@ export default function DefenseRoomPage() {
                   if (item.type === 'feedback') {
                     return (
                       <div key={item.id} className="fade-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%' }}>
+                        <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <Bot size={16} color="#1e3a8a" />
-                              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e3a8a' }}>Umpan Balik</p>
+                              <Bot size={16} color="#15803d" />
+                              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803d' }}>Umpan Balik</p>
                             </div>
                             {item.score !== undefined && (
-                              <span className="badge" style={{ backgroundColor: 'var(--white)', padding: '0.125rem 0.5rem', fontSize: '0.75rem', color: '#1e3a8a', fontWeight: 700 }}>Skor: {item.score}</span>
+                              <span className="badge" style={{ backgroundColor: 'var(--white)', padding: '0.125rem 0.5rem', fontSize: '0.75rem', color: '#15803d', fontWeight: 700, border: '1px solid #bbf7d0' }}>Skor: {item.score}</span>
                             )}
                           </div>
-                          <p className="line-clamp-4" style={{ color: '#1e3a8a', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontSize: '0.9375rem' }}>{item.content}</p>
+                          <p style={expandedItems[item.id] ? {
+                            color: '#166534',
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            whiteSpace: 'pre-wrap'
+                          } : {
+                            color: '#166534',
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            display: '-webkit-box',
+                            WebkitBoxOrient: 'vertical',
+                            WebkitLineClamp: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>{item.content}</p>
                           {item.content.length > 200 && (
-                            <button onClick={() => openDetailModal('Umpan Balik', item.content)} style={{ background: 'none', border: 'none', color: '#1e3a8a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>Lihat lengkap</button>
+                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
+                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -680,9 +736,23 @@ export default function DefenseRoomPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
                             <p style={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>Anda</p>
                           </div>
-                          <p className="line-clamp-4" style={{ lineHeight: 1.6, fontSize: '0.9375rem' }}>{item.content}</p>
+                          <p style={expandedItems[item.id] ? {
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            whiteSpace: 'pre-wrap'
+                          } : {
+                            lineHeight: 1.6,
+                            fontSize: '0.9375rem',
+                            display: '-webkit-box',
+                            WebkitBoxOrient: 'vertical',
+                            WebkitLineClamp: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>{item.content}</p>
                           {item.content.length > 200 && (
-                            <button onClick={() => openDetailModal('Jawaban Anda', item.content)} style={{ background: 'none', border: 'none', color: '#bfdbfe', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>Lihat lengkap</button>
+                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: '#bfdbfe', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
+                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
+                            </button>
                           )}
                         </div>
                       </div>

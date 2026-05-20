@@ -170,7 +170,7 @@ export async function evaluateDefenseAnswerAI(payload: any) {
   }
 
   try {
-    const prompt = `Anda adalah dosen penguji sidang akademik yang bertugas mengevaluasi jawaban mahasiswa.
+    const prompt = `Anda adalah dosen penguji sidang akademik yang bertugas mengevaluasi jawaban mahasiswa secara kritis, objektif, dan bervariasi.
 
 Konteks Penelitian Mahasiswa:
 - Judul Penelitian: ${payload.research.title}
@@ -182,27 +182,27 @@ Konteks Tanya-Jawab yang Sedang Aktif:
 - Jawaban Mahasiswa untuk Pertanyaan Tersebut: "${payload.answer}"
 - Mode Penguji saat ini: "${payload.examinerMode}"
 
-Tugas Anda adalah menilai kualitas jawaban mahasiswa terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
+Tugas Anda adalah menilai kualitas jawaban mahasiswa secara dinamis terhadap pertanyaan penguji yang sedang aktif. JANGAN mengevaluasi berdasarkan pertanyaan lama. Berikan feedback konstruktif.
 
 Panduan Penilaian Skor (Skala 0 - 100):
-- JANGAN PERNAH memberikan skor 0 kecuali jika jawaban kosong, sama sekali tidak relevan dengan pertanyaan (tidak nyambung total), atau hanya berisi teks sampah/noise.
-- Jika mahasiswa berusaha menjawab namun jawaban kurang kuat, tidak terstruktur, tidak rapi, atau terlalu singkat: Berikan skor minimal 40 (misal 40-54).
-- Jika jawaban relevan sebagian, menjawab sebagian pertanyaan, namun penjelasan kurang mendalam: Berikan skor 55-75.
-- Jika jawaban relevan, jelas, terstruktur, dan spesifik membahas konteks penelitiannya: Berikan skor 76-90.
-- Jika jawaban sangat kuat, meyakinkan, didukung argumen ilmiah yang solid, dan menunjukkan penguasaan materi yang luar biasa: Berikan skor 91-100.
-- Deteksi Jawaban Repetitif/Berputar-putar: Jika jawaban menggunakan frasa atau argumen yang sama berulang kali (berputar-putar), kurangi skornya. Jangan memberikan nilai tinggi hanya karena jawaban tersebut panjang jika isinya berputar-putar.
+- Evaluasi harus dinamis, objektif, dan bernilai variatif antara 0 hingga 100 berdasarkan kualitas jawaban nyata. JANGAN gunakan nilai default 70.
+- Aturan Skor:
+  * 0–30: tidak menjawab / sangat tidak relevan (tidak nyambung total) / hanya berisi noise.
+  * 31–50: menjawab sebagian tapi meleset dari inti pertanyaan atau argumen sangat lemah.
+  * 51–70: cukup relevan tapi kurang detail, kurang bukti ilmiah, atau berputar-putar.
+  * 71–85: baik, relevan, terstruktur cukup kuat, dan menyangkut metodologi/konteks penelitian.
+  * 86–100: sangat kuat, spesifik, argumentatif, didukung logika ilmiah solid, dan sesuai konteks penelitian.
+- Deteksi Jawaban Repetitif/Berputar-putar: Jika jawaban menggunakan frasa atau argumen yang sama berulang kali (berputar-putar), kurangi skornya secara signifikan. Jangan memberikan nilai tinggi hanya karena jawaban tersebut panjang jika isinya berputar-putar.
 
 Panduan Penulisan Feedback & Bahasa:
 - Gunakan Bahasa Indonesia yang natural, akademik, dan sesuai konteks sidang mahasiswa Indonesia. Jangan gunakan Bahasa Inggris kecuali istilah teknis yang memang umum.
-- Berikan kekuatan (strengths) dan kelemahan (weaknesses) dalam bentuk daftar ringkas (array of strings).
-- Berikan saran perbaikan (suggestion) praktis yang to-the-point agar jawaban berikutnya lebih baik.
 - Sediakan followUpQuestion (pertanyaan lanjutan) jika dirasa ada poin penting dari jawaban mahasiswa yang perlu digali lagi (opsional, jika tidak ada kosongkan "").
 
 Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
 {
-  "score": 70,
-  "strengths": ["Poin kekuatan 1...", "Poin kekuatan 2..."],
-  "weaknesses": ["Poin kelemahan 1...", "Poin kelemahan 2..."],
+  "score": [skor dinamis 0-100 berupa angka],
+  "strengths": "Poin-poin kekuatan jawaban...",
+  "weaknesses": "Poin-poin kelemahan jawaban...",
   "suggestion": "Saran perbaikan praktis...",
   "followUpQuestion": "Pertanyaan lanjutan (opsional, kosongkan jika tidak diperlukan)"
 }`;
@@ -219,17 +219,30 @@ Return ONLY JSON format (tanpa markdown format, pastikan JSON valid):
     score = Math.max(0, Math.min(100, score));
     result.score = score;
     
+    // Normalisasi strengths agar selalu array of strings
     if (!Array.isArray(result.strengths)) {
-      result.strengths = typeof result.strengths === 'string' ? [result.strengths] : [];
+      if (typeof result.strengths === 'string') {
+        const splitText = result.strengths.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+        result.strengths = splitText.length > 0 ? splitText : [result.strengths];
+      } else {
+        result.strengths = [];
+      }
     }
+    
+    // Normalisasi weaknesses agar selalu array of strings
     if (!Array.isArray(result.weaknesses)) {
-      result.weaknesses = typeof result.weaknesses === 'string' ? [result.weaknesses] : [];
+      if (typeof result.weaknesses === 'string') {
+        const splitText = result.weaknesses.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+        result.weaknesses = splitText.length > 0 ? splitText : [result.weaknesses];
+      } else {
+        result.weaknesses = [];
+      }
     }
     if (typeof result.suggestion !== 'string') {
       result.suggestion = '';
     }
     
-    console.log(`[AI] evaluate success provider=${provider}`);
+    console.log(`[AI] evaluate success provider=${provider} score=${score}`);
     return result;
   } catch (error: any) {
     console.warn(`[AI] evaluate failed, using fallback:`, error.message);

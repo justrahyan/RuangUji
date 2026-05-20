@@ -57,16 +57,16 @@ export default function SessionTranscript({ transcript }: SessionTranscriptProps
                 }
                 if (item.type === 'feedback') {
                   return (
-                    <div key={`mini-${item.id}`} style={{ padding: '0.875rem', borderRadius: '12px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                    <div key={`mini-${item.id}`} style={{ padding: '0.875rem', borderRadius: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                        <p style={{ fontSize: '0.65rem', fontWeight: 800, color: '#1e3a8a' }}>UMPAN BALIK</p>
+                        <p style={{ fontSize: '0.65rem', fontWeight: 800, color: '#15803d' }}>UMPAN BALIK</p>
                         {item.score !== undefined && (
-                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1e3a8a', backgroundColor: 'var(--white)', padding: '0.125rem 0.375rem', borderRadius: '4px' }}>Skor: {item.score}</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#15803d', backgroundColor: 'var(--white)', padding: '0.125rem 0.375rem', borderRadius: '4px', border: '1px solid #bbf7d0' }}>Skor: {item.score}</span>
                         )}
                       </div>
-                      <p className="line-clamp-4" style={{ fontSize: '0.8125rem', color: '#1e3a8a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.content}</p>
+                      <p className="line-clamp-4" style={{ fontSize: '0.8125rem', color: '#166534', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.content}</p>
                       {item.content.length > 120 && (
-                        <button onClick={() => openDetail('Umpan Balik', item.content)} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.25rem' }}>Lihat lengkap</button>
+                        <button onClick={() => openDetail('Umpan Balik', item.content)} style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.25rem' }}>Lihat lengkap</button>
                       )}
                     </div>
                   );

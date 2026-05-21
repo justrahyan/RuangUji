@@ -30,7 +30,8 @@ export default function LandingPage() {
     { q: 'Apakah perlu login?', a: 'Tidak sama sekali. Semua data simulasi, transkrip, dan profil penelitian Anda disimpan secara lokal di perangkat Anda melalui localStorage.' },
     { q: 'Apakah bisa upload dokumen?', a: 'Bisa. RuangUji mendukung ekstraksi file dokumen (seperti PDF/DOCX) untuk digunakan sebagai ringkasan dan basis pertanyaan penguji virtual Anda.' },
     { q: 'Apakah bisa latihan dengan suara?', a: 'Tentu. Anda dapat mengaktifkan fitur mikrofon (Speech-to-Text) untuk menjawab secara lisan. AI juga dilengkapi Text-to-Speech untuk membaca pertanyaan secara langsung.' },
-    { q: 'Apakah riwayat latihan tersimpan?', a: 'Ya, seluruh sesi latihan Anda sebelumnya akan tersimpan rapi di tab Riwayat pada browser Anda.' }
+    { q: 'Apakah riwayat latihan tersimpan?', a: 'Ya, seluruh sesi latihan Anda sebelumnya akan tersimpan rapi di tab Riwayat pada browser Anda.' },
+    { q: 'Apakah ada batas latihan?', a: 'Ada. Untuk menjaga ketersediaan layanan AI, setiap pengguna dibatasi 5 sesi latihan per 8 jam. Batas ini akan otomatis reset pada periode berikutnya.' }
   ];
 
   return (

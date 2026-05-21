@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
-import type { ExaminerMode, SessionLength, ResearchProfile, DefenseSession } from '../types';
-import { saveLatestResearch, saveActiveSession } from '../lib/storage';
+import type { ExaminerMode, SessionLength, ResearchProfile, DefenseSession, TrainingUsageStatus } from '../types';
+import { saveLatestResearch, saveActiveSession, setInMemoryDocumentText } from '../lib/storage';
 import SectionHeader from '../components/SectionHeader';
 
 function formatBytes(bytes: number): string {
@@ -17,6 +17,11 @@ export default function SetupPage() {
   const location = useLocation();
   const [step, setStep] = useState(1);
   const [error, setError] = useState('');
+  const [usageStatus, setUsageStatus] = useState<TrainingUsageStatus | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [startSessionLoading, setStartSessionLoading] = useState(false);
+  const [quotaModalOpen, setQuotaModalOpen] = useState(false);
+  const [quotaModalMessage, setQuotaModalMessage] = useState('');
 
   // Step 1
   const [title, setTitle] = useState('');
@@ -36,6 +41,7 @@ export default function SetupPage() {
   const [uploadError, setUploadError] = useState('');
   const [documentText, setDocumentText] = useState('');      // full extracted text for AI context
   const [documentPreview, setDocumentPreview] = useState(''); // short preview / ringkasan for user
+  const [docId, setDocId] = useState('');
   const [showUseExtracted, setShowUseExtracted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +54,10 @@ export default function SetupPage() {
     const q = params.get('q') || location.state?.q;
     if (q) setConcern(`Fokus latihan pada pertanyaan: "${q}"`);
   }, [location]);
+
+  useEffect(() => {
+    refreshUsageStatus();
+  }, []);
 
   // Upload Handlers
   const handleFileSelect = async (file: File) => {
@@ -71,6 +81,7 @@ export default function SetupPage() {
     setUploadError('');
     setDocumentText('');
     setDocumentPreview('');
+    setDocId('');
     setShowUseExtracted(false);
 
     try {
@@ -82,6 +93,10 @@ export default function SetupPage() {
       if (data.ok && data.text) {
         setDocumentText(data.text);             // full context for AI
         setDocumentPreview(data.preview || '');  // short preview for user
+        if (data.docId) {
+          setDocId(data.docId);
+          setInMemoryDocumentText(data.docId, data.text);
+        }
         setUploadStatus('success');
         // Never auto-fill abstract — always show button
         setShowUseExtracted(true);
@@ -114,6 +129,7 @@ export default function SetupPage() {
     setUploadError('');
     setDocumentText('');
     setDocumentPreview('');
+    setDocId('');
     setShowUseExtracted(false);
     // abstract stays as-is — don't clear user's text
   };
@@ -122,6 +138,54 @@ export default function SetupPage() {
     // Fill abstract with the short preview, not the full document text
     setAbstract(documentPreview || documentText.substring(0, 2000));
     setShowUseExtracted(false);
+  };
+
+  const formatResetTime = (value?: string) => {
+    if (!value) return '-';
+
+    try {
+      return new Date(value).toLocaleString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '-';
+    }
+  };
+
+  const refreshUsageStatus = async () => {
+    setUsageLoading(true);
+
+    try {
+      const res = await fetch('/api/usage/status');
+      const data = await res.json();
+
+      if (res.ok && data) {
+        setUsageStatus(data);
+      }
+    } catch (err) {
+      console.warn('Gagal mengambil status limit latihan:', err);
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
+  const showQuotaModal = (message?: string, status?: TrainingUsageStatus | null) => {
+    const activeStatus = status || usageStatus;
+
+    const resetText = activeStatus?.resetAt
+      ? ` Reset pada ${formatResetTime(activeStatus.resetAt)}.`
+      : '';
+
+    setQuotaModalMessage(
+      message ||
+      `Batas latihan untuk periode ini sudah habis.${resetText}`
+    );
+
+    setQuotaModalOpen(true);
   };
 
   // Navigation
@@ -138,30 +202,71 @@ export default function SetupPage() {
     setError(''); setStep(3);
   };
 
-  const handleSubmit = () => {
-    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
-    const questionCount = sessionLength === 'cepat' ? 5 : sessionLength === 'normal' ? 8 : 12;
+  const handleSubmit = async () => {
+    if (startSessionLoading) return;
 
-    const research: ResearchProfile = {
-      id, title, sessionType, field, keywords,
-      researchApproach, method, abstract, concern,
-      documentText: documentText || undefined,
-      documentPreview: documentPreview || undefined,
-      documentName: uploadedFile?.name,
-      documentSize: uploadedFile?.size,
-      examinerMode, sessionLength, questionCount,
-      createdAt: new Date().toISOString()
-    };
+    if (usageStatus?.blocked || usageStatus?.remaining === 0) {
+      showQuotaModal(undefined, usageStatus);
+      return;
+    }
 
-    const session: DefenseSession = {
-      id, research, transcript: [],
-      currentQuestionIndex: 0, score: 0,
-      status: 'active', createdAt: new Date().toISOString()
-    };
+    setStartSessionLoading(true);
+    setError('');
 
-    saveLatestResearch(research);
-    saveActiveSession(session);
-    navigate('/defense');
+    try {
+      const usageRes = await fetch('/api/usage/start-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const usageData = await usageRes.json();
+
+      setUsageStatus(usageData);
+
+      if (!usageRes.ok || usageData.blocked || usageData.remaining < 0) {
+        showQuotaModal(
+          usageData.error ||
+          `Batas latihan sudah habis. Silakan coba lagi setelah reset berikutnya.`,
+          usageData
+        );
+        return;
+      }
+
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+      const questionCount = sessionLength === 'cepat' ? 5 : sessionLength === 'normal' ? 8 : 12;
+
+      // Cache the document text under the new research ID as well
+      if (docId && documentText) {
+        setInMemoryDocumentText(id, documentText);
+      }
+
+      const research: ResearchProfile = {
+        id, title, sessionType, field, keywords,
+        researchApproach, method, abstract, concern,
+        // Omit documentText from localStorage to avoid quota limits
+        documentPreview: documentPreview || undefined,
+        documentName: uploadedFile?.name,
+        documentSize: uploadedFile?.size,
+        docId: docId || undefined,
+        examinerMode, sessionLength, questionCount,
+        createdAt: new Date().toISOString()
+      };
+
+      const session: DefenseSession = {
+        id, research, transcript: [],
+        currentQuestionIndex: 0, score: 0,
+        status: 'active', createdAt: new Date().toISOString()
+      };
+
+      saveLatestResearch(research);
+      saveActiveSession(session);
+      navigate('/defense');
+    } catch (err) {
+      console.error('Gagal memulai sesi:', err);
+      setError('Gagal memulai sesi. Pastikan server berjalan, lalu coba lagi.');
+    } finally {
+      setStartSessionLoading(false);
+    }
   };
 
   // Static Options
@@ -253,9 +358,7 @@ export default function SetupPage() {
                 </div>
               )}
 
-              {/* ════════════════════════════════
-                  STEP 1 – Informasi Penelitian
-                  ════════════════════════════════ */}
+              {/* STEP 1 – Informasi Penelitian */}
               {step === 1 && (
                 <div className="fade-up" style={{ display: 'grid', gap: '1.375rem' }}>
 
@@ -308,9 +411,7 @@ export default function SetupPage() {
                 </div>
               )}
 
-              {/* ════════════════════════════════
-                  STEP 2 – Detail Penelitian
-                  ════════════════════════════════ */}
+              {/* STEP 2 – Detail Penelitian */}
               {step === 2 && (
                 <div className="fade-up" style={{ display: 'grid', gap: '1.375rem' }}>
 
@@ -465,11 +566,88 @@ export default function SetupPage() {
                 </div>
               )}
 
-              {/* ════════════════════════════════
-                  STEP 3 – Mode Simulasi
-                  ════════════════════════════════ */}
+              {/* STEP 3 – Mode Simulasi */}
               {step === 3 && (
                 <div className="fade-up" style={{ display: 'grid', gap: '2rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: '1rem',
+                      padding: '1rem',
+                      borderRadius: '16px',
+                      border: usageStatus?.blocked
+                        ? '1px solid #fecaca'
+                        : '1px solid #bfdbfe',
+                      backgroundColor: usageStatus?.blocked
+                        ? '#fef2f2'
+                        : '#eff6ff',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 999,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: usageStatus?.blocked ? '#fee2e2' : '#dbeafe',
+                          color: usageStatus?.blocked ? '#b91c1c' : 'var(--primary-blue)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {usageStatus?.blocked ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+                      </div>
+
+                      <div>
+                        <p
+                          style={{
+                            fontWeight: 800,
+                            fontSize: '0.9rem',
+                            color: usageStatus?.blocked ? '#991b1b' : '#1e40af',
+                            marginBottom: '0.25rem',
+                          }}
+                        >
+                          {usageStatus?.blocked
+                            ? 'Batas latihan periode ini sudah habis'
+                            : 'Kuota latihan tersedia'}
+                        </p>
+
+                        <p
+                          style={{
+                            fontSize: '0.82rem',
+                            color: usageStatus?.blocked ? '#b91c1c' : '#1d4ed8',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {usageLoading
+                            ? 'Memeriksa kuota latihan...'
+                            : usageStatus
+                              ? `Sisa ${usageStatus.remaining} dari ${usageStatus.limit} sesi. Reset setiap ${usageStatus.windowHours} jam, berikutnya ${formatResetTime(usageStatus.resetAt)}.`
+                              : 'Status kuota belum tersedia.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={refreshUsageStatus}
+                      disabled={usageLoading}
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '0.45rem 0.85rem',
+                        fontSize: '0.78rem',
+                        borderRadius: '999px',
+                        whiteSpace: 'nowrap',
+                        opacity: usageLoading ? 0.7 : 1,
+                      }}
+                    >
+                      {usageLoading ? 'Cek...' : 'Refresh'}
+                    </button>
+                  </div>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem' }}>Pilih Mode Penguji</label>
@@ -570,7 +748,33 @@ export default function SetupPage() {
                 }
                 {step === 1 && <button className="btn btn-primary" onClick={handleNextStep1}>Lanjut <ArrowRight size={18} /></button>}
                 {step === 2 && <button className="btn btn-primary" onClick={handleNextStep2}>Lanjut <ArrowRight size={18} /></button>}
-                {step === 3 && <button className="btn btn-primary" onClick={handleSubmit}>Masuki Ruang Sidang <ArrowRight size={18} /></button>}
+                {step === 3 && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSubmit}
+                    disabled={startSessionLoading || usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
+                    style={{
+                      opacity: startSessionLoading || usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 0.65 : 1,
+                      cursor: startSessionLoading || usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    title={usageStatus?.blocked || usageStatus?.remaining === 0 ? 'Batas latihan sudah habis untuk periode ini.' : undefined}
+                  >
+                    {startSessionLoading ? (
+                      <>
+                        <Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite' }} />
+                        Menyiapkan Sesi...
+                      </>
+                    ) : usageStatus?.blocked || usageStatus?.remaining === 0 ? (
+                      <>
+                        Batas Latihan Habis
+                      </>
+                    ) : (
+                      <>
+                        Masuki Ruang Sidang <ArrowRight size={18} />
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
             </div>
@@ -578,6 +782,122 @@ export default function SetupPage() {
 
         </div>
       </div>
+
+      {quotaModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            onClick={() => setQuotaModalOpen(false)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.45)',
+              backdropFilter: 'blur(3px)',
+            }}
+          />
+
+          <div
+            className="card fade-up"
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: 460,
+              backgroundColor: 'var(--white)',
+              borderRadius: 24,
+              padding: '1.5rem',
+              boxShadow: '0 24px 60px rgba(15, 23, 42, 0.18)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                backgroundColor: '#fef2f2',
+                color: '#dc2626',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <AlertCircle size={24} />
+            </div>
+
+            <h3
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                marginBottom: '0.5rem',
+              }}
+            >
+              Batas Latihan Tercapai
+            </h3>
+
+            <p
+              style={{
+                fontSize: '0.92rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+                marginBottom: '1rem',
+              }}
+            >
+              {quotaModalMessage}
+            </p>
+
+            {usageStatus && (
+              <div
+                style={{
+                  padding: '0.875rem',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid var(--border-color)',
+                  marginBottom: '1.25rem',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-secondary)',
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong style={{ color: 'var(--text-primary)' }}>
+                  Sisa sesi: {usageStatus.remaining}/{usageStatus.limit}
+                </strong>
+                <br />
+                Reset berikutnya: {formatResetTime(usageStatus.resetAt)}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setQuotaModalOpen(false);
+                  refreshUsageStatus();
+                }}
+              >
+                Cek Ulang
+              </button>
+
+              <button
+                className="btn btn-primary"
+                onClick={() => setQuotaModalOpen(false)}
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

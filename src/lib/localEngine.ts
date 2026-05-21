@@ -67,7 +67,7 @@ export function generateQuestion(
 
   // Dynamic contextual questions based on keywords
   const specificQuestions: { category: string; q: string }[] = [];
-  
+
   if (isSystemPakar(research)) {
     specificQuestions.push(
       { category: 'metode', q: `Bagaimana Anda menyusun basis pengetahuan (knowledge base) untuk sistem pakar Anda? Siapa pakar yang memvalidasi rule tersebut?` },
@@ -78,7 +78,7 @@ export function generateQuestion(
     );
   } else if (isMachineLearning(research)) {
     specificQuestions.push(
-      { category: 'validitas', q: `Bagaimana Anda membagi dataset (train, validation, test split) untuk memastikan model ${method} Anda terhindar dari overfitting?` },
+      { category: 'validitas', q: `Bagaimana Anda membagi dataset (train, validation, test split) untuk memastikan model ${method} Anda dapat dievaluasi secara adil dan kredibel?` },
       ...(mentionsMetric(research) ? [
         { category: 'validitas', q: `Mengapa Anda memilih metrik evaluasi tersebut (seperti akurasi, F1-score, atau precision) untuk mengukur performa model Anda?` }
       ] : []),
@@ -102,7 +102,7 @@ export function generateQuestion(
     { category: 'latar_belakang', q: `Jelaskan secara singkat namun meyakinkan, mengapa masalah ini mendesak untuk diselesaikan?` },
     { category: 'latar_belakang', q: `Banyak penelitian serupa, apa yang membuat kasus Anda spesifik dan layak diangkat menjadi skripsi?` },
     { category: 'latar_belakang', q: `Bagaimana Anda mendefinisikan ruang lingkup masalah agar penelitian ini tidak terlalu meluas?` },
-    
+
     // Novelty / Kontribusi
     { category: 'novelty', q: `Apa perbedaan paling mendasar antara penelitian Anda dengan penelitian sebelumnya di bidang ini?` },
     { category: 'novelty', q: `Apa nilai tambah (novelty) yang benar-benar baru dari solusi yang Anda tawarkan?` },
@@ -155,7 +155,7 @@ export function generateQuestion(
     { category: 'jebakan', q: `Apakah Anda yakin judul penelitian Anda sudah merepresentasikan isi keseluruhan skripsi?` },
     { category: 'jebakan', q: `Jika penguji menilai metode ${method} Anda usang, argumen logis apa yang Anda siapkan?` },
     { category: 'jebakan', q: `Apakah masalah yang Anda teliti ini sebenarnya bukan masalah yang nyata (pseudo-problem)?` },
-    
+
     // Concern / Kekhawatiran
     ...(concern ? [
       { category: 'concern', q: `Mengenai "${concern}" yang menjadi kekhawatiran Anda, bagaimana Anda berencana memitigasinya saat implementasi nyata?` },
@@ -170,17 +170,30 @@ export function generateQuestion(
   else if (examinerMode === 'novelty') preferredCategories = ['novelty', 'latar_belakang'];
   else if (examinerMode === 'implementasi') preferredCategories = ['implementasi', 'metode'];
   else if (examinerMode === 'kritis' || examinerMode === 'killer') preferredCategories = ['validitas', 'jebakan', 'batasan'];
-  else preferredCategories = ['latar_belakang', 'novelty', 'metode', 'validitas', 'implementasi', 'batasan']; // santai / umum
+  else if (examinerMode === 'santai') preferredCategories = ['latar_belakang', 'novelty', 'implementasi'];
+  else preferredCategories = ['latar_belakang', 'novelty', 'metode', 'validitas', 'implementasi', 'batasan']; // umum
 
-  // Filter available questions
-  let available = bank.filter(q => !previousQuestions.some(pq => isSimilarQuestion(pq, q.q)));
+  // Filter available questions (anti-repetition & keyword filtering)
+  let available = bank.filter(q => {
+    const isSimilar = previousQuestions.some(pq => isSimilarQuestion(pq, q.q));
+    if (isSimilar) return false;
+
+    const lowerQ = q.q.toLowerCase();
+    if (lowerQ.includes('overfitting') && previousQuestions.some(pq => pq.toLowerCase().includes('overfitting'))) {
+      return false;
+    }
+    if ((lowerQ.includes('split') || lowerQ.includes('pembagian dataset')) && previousQuestions.some(pq => pq.toLowerCase().includes('split') || pq.toLowerCase().includes('pembagian dataset'))) {
+      return false;
+    }
+    return true;
+  });
+
   if (available.length === 0) available = bank; // fallback if all exhausted
 
   // Prioritize category
   let candidates = available.filter(q => preferredCategories.includes(q.category));
   if (candidates.length === 0) candidates = available;
 
-  // Pick one randomly or by index logic
   const selected = candidates[questionIndex % candidates.length].q;
 
   // Formatting based on mode
@@ -190,23 +203,18 @@ export function generateQuestion(
   } else if (examinerMode === 'killer') {
     finalQuestion = `Jawab dengan singkat dan padat: ${finalQuestion}`;
   } else if (examinerMode === 'santai') {
-    finalQuestion = `Bisa Anda ceritakan sedikit, ${finalQuestion.charAt(0).toLowerCase() + finalQuestion.slice(1)}`;
+    finalQuestion = selected;
   }
 
   return finalQuestion;
 }
 
 // Evaluation Helpers
-function extractKeywords(text: string): Set<string> {
-  const stopWords = new Set(['yang', 'dan', 'di', 'dari', 'ke', 'ini', 'itu', 'untuk', 'dengan', 'pada', 'adalah', 'sebagai']);
-  const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-  return new Set(words.filter(w => w.length > 3 && !stopWords.has(w)));
-}
 
 function repetitionRatio(text: string): number {
   const words = text.toLowerCase().match(/\b\w+\b/g) || [];
   if (words.length < 10) return 0;
-  
+
   const uniqueWords = new Set(words);
   return 1 - (uniqueWords.size / words.length);
 }
@@ -217,103 +225,329 @@ function removeRepeatedPhrases(text: string): string {
   return clean;
 }
 
+function normalizeForCompare(text: string): string {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenize(text: string): string[] {
+  return normalizeForCompare(text)
+    .split(" ")
+    .filter(token => token.length > 2);
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const aTokens = new Set(tokenize(a));
+  const bTokens = new Set(tokenize(b));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) intersection++;
+  }
+
+  const union = new Set([...aTokens, ...bTokens]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function isDirectActionQuestion(question: string): boolean {
+  const q = question.toLowerCase();
+  const directKeywords = [
+    "perbaiki", "3 bulan", "perbaikan", "koreksi", "evaluasi", "lanjutan",
+    "mendatang", "revisi", "tambahkan", "ubah", "tambah"
+  ];
+  return directKeywords.some(kw => q.includes(kw));
+}
+
+function hasRelevantResearchKeyword(answer: string, research: any): boolean {
+  const a = answer.toLowerCase();
+  const rawKeywords = [
+    ...(research?.title || "").toLowerCase().split(/\s+/),
+    ...(research?.method || "").toLowerCase().split(/\s+/),
+    ...(research?.field || "").toLowerCase().split(/\s+/),
+    ...(research?.keywords || "").toLowerCase().split(/\s+/),
+    ...(research?.documentPreview || "").toLowerCase().split(/\s+/).slice(0, 400),
+    ...(research?.documentText || "").toLowerCase().split(/\s+/).slice(0, 800),
+    "dataset", "data", "model", "akurasi", "fitur", "metode", "algoritma", "preprocessing", "uji", "sampel", "uji coba"
+  ];
+  const cleanKeywords = Array.from(new Set(rawKeywords.filter(k => k.length > 3)));
+  return cleanKeywords.some(kw => a.includes(kw));
+}
+
+function isShortButRelevantAnswer(question: string, answer: string, research: any): boolean {
+  const answerTokenCount = tokenize(answer).length;
+  if (answerTokenCount >= 1 && answerTokenCount <= 5) {
+    return isDirectActionQuestion(question) && hasRelevantResearchKeyword(answer, research);
+  }
+  return false;
+}
+
+const COMMON_STOPWORDS = new Set([
+  'yang', 'dan', 'atau', 'dengan', 'untuk', 'dari', 'pada', 'dalam', 'ini', 'itu',
+  'anda', 'saya', 'kami', 'penelitian', 'bagaimana', 'mengapa', 'apa', 'apakah',
+  'jika', 'secara', 'jelaskan', 'ceritakan', 'sedikit', 'bisa', 'dapat', 'akan',
+  'adalah', 'karena', 'sebagai', 'terhadap', 'hasil', 'metode', 'topik'
+]);
+
+function contentTokens(text: string): string[] {
+  return tokenize(text).filter(token => !COMMON_STOPWORDS.has(token));
+}
+
+function hasQuestionContentOverlap(question: string, answer: string): boolean {
+  const qTokens = new Set(contentTokens(question));
+  const aTokens = new Set(contentTokens(answer));
+  if (qTokens.size === 0 || aTokens.size === 0) return false;
+  for (const token of aTokens) {
+    if (qTokens.has(token)) return true;
+  }
+  return false;
+}
+
+function isLikelyOffTopicAnswer(question: string, answer: string, research: any): boolean {
+  const answerTokenCount = tokenize(answer).length;
+  if (answerTokenCount < 3) return false;
+  if (isShortButRelevantAnswer(question, answer, research)) return false;
+  return !hasQuestionContentOverlap(question, answer) && !hasRelevantResearchKeyword(answer, research);
+}
+
 export function evaluateAnswer(
-  question: string, 
-  answer: string, 
-  research: ResearchProfile, 
+  question: string,
+  answer: string,
+  research: ResearchProfile,
   examinerMode: string
 ): AnswerEvaluation {
-  const trimmed = answer.trim();
-  if (!trimmed) {
+  const q = normalizeForCompare(question);
+  const a = normalizeForCompare(answer);
+  const rawAnswer = String(answer || "").trim();
+
+  const refusalPatterns = [
+    /\bgatau\b/i,
+    /\bga tau\b/i,
+    /\bgak tau\b/i,
+    /\bnggak tau\b/i,
+    /\btidak tahu\b/i,
+    /\btdk tahu\b/i,
+    /\bndak tau\b/i,
+    /\bndak tahu\b/i,
+    /\bndbisa\b/i,
+    /\btidak bisa\b/i,
+    /\bgabisa\b/i,
+    /\bga bisa\b/i,
+    /\bbingung\b/i,
+    /\bskip\b/i,
+    /\bmales\b/i,
+    /\bmalas\b/i,
+    /\bgamau\b/i,
+    /\bga mau\b/i,
+    /\btidak mau\b/i,
+    /\bentahlah\b/i,
+    /\bkurang tahu\b/i,
+    /\bkurang tau\b/i
+  ];
+
+  const questionSimilarity = jaccardSimilarity(q, a);
+  const answerTokenCount = tokenize(a).length;
+
+  if (!rawAnswer || answerTokenCount === 0) {
     return {
       score: 0,
-      strengths: [],
-      weaknesses: ['Jawaban kosong. Anda harus memberikan jawaban tertulis.'],
-      suggestion: 'Silakan ketik atau diktekan jawaban Anda sebelum mengirim.'
+      strengths: ["Belum ada jawaban yang dapat dinilai."],
+      weaknesses: ["Jawaban kosong sehingga tidak menjawab pertanyaan penguji."],
+      suggestion: "Berikan jawaban singkat yang langsung menjawab inti pertanyaan, lalu tambahkan alasan atau contoh dari penelitian Anda."
     };
   }
 
-  const cleanAnswer = removeRepeatedPhrases(trimmed);
-  const answerLower = cleanAnswer.toLowerCase();
-  const wordCount = cleanAnswer.split(/\s+/).length;
+  if (refusalPatterns.some((pattern) => pattern.test(rawAnswer))) {
+    return {
+      score: 10,
+      strengths: ["Belum terlihat kekuatan akademik dari jawaban ini."],
+      weaknesses: ["Jawaban menunjukkan ketidaksiapan atau penolakan menjawab, sehingga inti pertanyaan belum dijawab."],
+      suggestion: "Jika belum tahu, tetap jawab secara akademik: sebutkan dugaan yang paling masuk akal, lalu akui batasannya dengan sopan."
+    };
+  }
+
+  if (questionSimilarity >= 0.72 || a.includes(q) || (q.includes(a) && answerTokenCount > 6)) {
+    return {
+      score: 10,
+      strengths: ["Jawaban masih memuat konteks pertanyaan, tetapi belum memberikan penjelasan dari pihak mahasiswa."],
+      weaknesses: ["Jawaban hanya mengulang atau menyalin pertanyaan penguji, bukan menjawab inti yang diminta."],
+      suggestion: "Jangan mengulang pertanyaan penguji. Tulis jawaban Anda sendiri dengan menjelaskan alasan, metode, data, atau hasil riset Anda secara konkret."
+    };
+  }
+
+  const partialRelevantSignals = [
+    'karena',
+    'alasan',
+    'berbeda',
+    'metode',
+    'model',
+    'mekanisme',
+    'attention',
+    'cbam',
+    'coordinate',
+    'dataset',
+    'hasil',
+    'akurasi',
+    'efisiensi'
+  ];
+
+  const hasPartialRelevantSignal = partialRelevantSignals.some(signal => rawAnswer.toLowerCase().includes(signal));
+
+  if (answerTokenCount >= 8 && questionSimilarity < 0.72 && hasPartialRelevantSignal) {
+    const isInformal = /\b(cuy|wkwk|hehe|mepet|deadline|belum sempat|tidak sempat)\b/i.test(rawAnswer);
+
+    if (isInformal) {
+      return {
+        score: 45,
+        strengths: ["Jawaban sudah menyentuh sebagian inti pertanyaan."],
+        weaknesses: ["Alasan masih terlalu informal atau personal, sehingga belum kuat sebagai argumen akademik."],
+        suggestion: "Ubah alasan personal menjadi alasan metodologis, misalnya dengan menjelaskan perbedaan mekanisme, ruang lingkup eksperimen, atau dasar pembandingan model."
+      };
+    }
+
+    return {
+      score: 55,
+      strengths: ["Jawaban sudah relevan dengan inti pertanyaan."],
+      weaknesses: ["Jawaban masih umum dan belum cukup didukung data, metode, atau hasil penelitian."],
+      suggestion: "Tambahkan alasan ilmiah dan kaitkan dengan detail penelitian agar jawaban lebih kuat."
+    };
+  }
+
+  if (isShortButRelevantAnswer(question, answer, research)) {
+    return {
+      score: 60,
+      strengths: ["Jawaban langsung menjawab sasaran perbaikan yang ditanyakan secara spesifik."],
+      weaknesses: ["Penjelasan masih terlalu singkat dan belum memuat alasan logis atau dampak perbaikan tersebut."],
+      suggestion: "Tambahkan penjelasan mengapa tindakan tersebut penting, dampaknya bagi model/hasil riset, dan bagaimana Anda menerapkannya secara operasional."
+    };
+  }
+
+  if (isLikelyOffTopicAnswer(question, answer, research)) {
+    return {
+      score: 30,
+      strengths: ["Jawaban sudah mencoba merespons, tetapi belum terhubung dengan inti pertanyaan."],
+      weaknesses: ["Jawaban tidak memuat kata kunci substansial dari pertanyaan maupun konteks penelitian."],
+      suggestion: "Jawab inti pertanyaan terlebih dahulu, lalu kaitkan dengan data, metode, variabel, atau temuan spesifik dari penelitian Anda."
+    };
+  }
+
+  if (answerTokenCount <= 2) {
+    return {
+      score: 10,
+      strengths: ["Belum terlihat pemahaman yang cukup dari jawaban."],
+      weaknesses: ["Jawaban terlalu pendek dan belum menjelaskan inti pertanyaan."],
+      suggestion: "Jawab minimal dengan satu argumen utama, alasan pendukung, dan kaitannya dengan penelitian Anda."
+    };
+  }
+
+  if (answerTokenCount < 8) {
+    return {
+      score: 25,
+      strengths: ["Jawaban sudah mencoba merespons, tetapi masih sangat terbatas."],
+      weaknesses: ["Jawaban belum cukup menjelaskan alasan, bukti, atau hubungan dengan konteks penelitian."],
+      suggestion: "Perpanjang jawaban dengan minimal dua kalimat: satu kalimat inti jawaban dan satu kalimat alasan/dukungan."
+    };
+  }
+
+  const cleanAnswer = removeRepeatedPhrases(rawAnswer);
+  const lowerAnswer = cleanAnswer.toLowerCase();
+
+  const looksLikeFeedback =
+    lowerAnswer.includes('skor:') &&
+    (
+      lowerAnswer.includes('kekuatan:') ||
+      lowerAnswer.includes('perlu diperbaiki:') ||
+      lowerAnswer.includes('saran:')
+    );
+
+  if (looksLikeFeedback) {
+    return {
+      score: 5,
+      strengths: ['Jawaban tidak dapat dinilai sebagai respons akademik.'],
+      weaknesses: ['Yang dikirim terlihat seperti feedback/evaluasi AI, bukan jawaban mahasiswa.'],
+      suggestion: 'Jawab pertanyaan dengan kalimat sendiri, bukan menyalin feedback.'
+    };
+  }
+
+  const wordCount = cleanAnswer.split(/\s+/).filter(Boolean).length;
   const repRatio = repetitionRatio(cleanAnswer);
-  
-  let score = 60; // baseline
+
   const strengths: string[] = [];
   const weaknesses: string[] = [];
+  let score = 40;
 
-  // Short answers
-  if (wordCount < 10) {
-    score = 40 + Math.min(15, wordCount);
-    weaknesses.push('Jawaban terlalu singkat. Berikan penjelasan yang lebih mendalam dan spesifik.');
-  } else {
-    // Length is decent
-    if (repRatio > 0.4) {
-      score = 50 + Math.floor(Math.random() * 10);
-      weaknesses.push('Jawaban terdeteksi repetitif atau berputar-putar. Cobalah lebih to-the-point.');
-    } else {
-      score = 70;
-      strengths.push('Panjang jawaban cukup memadai untuk menjelaskan argumen Anda.');
-    }
+  if (repRatio > 0.35) {
+    weaknesses.push('Jawaban terdeteksi repetitif atau berputar-putar, sehingga substansinya kurang kuat.');
+    score = Math.min(10, score);
   }
 
-  // Concept checks (method, field, etc.)
   const methodTerms = research.method.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const hasMethodTerm = methodTerms.some(term => answerLower.includes(term));
-  
+  const hasMethodTerm = methodTerms.some(term => lowerAnswer.includes(term));
+  const hasResearchSignal = hasRelevantResearchKeyword(cleanAnswer, research);
+  const hasQuestionOverlap = hasQuestionContentOverlap(question, cleanAnswer);
+
+  if (hasQuestionOverlap) {
+    score += 15;
+    strengths.push('Jawaban sudah menyentuh inti kata kunci pertanyaan penguji.');
+  } else {
+    weaknesses.push('Jawaban belum cukup langsung menjawab inti pertanyaan penguji.');
+  }
+
+  if (hasResearchSignal) {
+    score += 10;
+    strengths.push('Jawaban mulai dikaitkan dengan konteks penelitian.');
+  }
+
   if (hasMethodTerm) {
     score += 8;
-    strengths.push(`Anda mengaitkan jawaban dengan metode penelitian Anda (${research.method}).`);
+    strengths.push(`Jawaban mengaitkan pembahasan dengan metode penelitian (${research.method}).`);
   }
 
-  // Reasoning checks
   const reasoningKeywords = ['karena', 'alasan', 'sebab', 'sehingga', 'maka', 'oleh karena itu', 'dikarenakan'];
-  const hasReasoning = reasoningKeywords.some(kw => answerLower.includes(kw));
+  const hasReasoning = reasoningKeywords.some(kw => lowerAnswer.includes(kw));
   if (hasReasoning) {
-    score += 7;
-    strengths.push('Anda menggunakan argumentasi sebab-akibat atau alasan logis.');
-  }
-
-  // Specificity / Relevance similarity with question
-  const qKeywords = extractKeywords(question);
-  const aKeywords = extractKeywords(cleanAnswer);
-  let matchCount = 0;
-  qKeywords.forEach(kw => { if (aKeywords.has(kw)) matchCount++; });
-  
-  if (qKeywords.size > 0 && matchCount === 0) {
-    score -= 15;
-    weaknesses.push('Jawaban kurang relevan dengan konteks pertanyaan penguji.');
-  } else if (matchCount > 1) {
-    score += 5;
-    strengths.push('Menjawab kata kunci yang ditanyakan oleh penguji.');
-  }
-
-  // Mode styling adjustments
-  if (examinerMode === 'kritis' || examinerMode === 'killer') {
-    score -= 5;
-  }
-
-  // Set score bounds based on user requirement:
-  if (wordCount < 10) {
-    score = Math.max(40, Math.min(55, score));
-  } else if (repRatio > 0.4) {
-    score = Math.max(50, Math.min(65, score));
-  } else if (hasMethodTerm && hasReasoning && matchCount > 0) {
-    score = Math.max(75, Math.min(90, score));
+    score += 10;
+    strengths.push('Jawaban memiliki alasan atau hubungan sebab-akibat.');
   } else {
-    score = Math.max(60, Math.min(75, score));
+    weaknesses.push('Jawaban belum menjelaskan alasan logis di balik pernyataan utama.');
   }
 
-  // Guard: Jika answerText panjang > 30 kata, jangan pernah beri 0
-  if (wordCount > 30 && score < 40) {
-    score = 65;
+  const evidenceKeywords = ['data', 'hasil', 'jumlah', 'sampel', 'responden', 'akurasi', 'nilai', 'validasi', 'uji', 'temuan', 'berdasarkan'];
+  const hasEvidence = evidenceKeywords.some(kw => lowerAnswer.includes(kw));
+  if (hasEvidence) {
+    score += 8;
+    strengths.push('Jawaban memuat unsur bukti, data, atau hasil penelitian.');
   }
+
+  if (wordCount >= 35) score += 7;
+  else if (wordCount < 18) {
+    weaknesses.push('Jawaban masih terlalu pendek untuk menunjukkan pemahaman yang utuh.');
+    score = Math.min(score, 55);
+  }
+
+  if (examinerMode === 'kritis' || examinerMode === 'killer') score -= 5;
+
+  if (!hasQuestionOverlap && !hasResearchSignal) score = Math.min(score, 35);
+  if (!hasQuestionOverlap) score = Math.min(score, 55);
+  if (!hasReasoning) score = Math.min(score, 70);
+  if (!hasEvidence && score > 82) score = 82;
+  if (wordCount < 25 && score > 65) score = 65;
 
   score = Math.min(Math.max(Math.round(score), 0), 100);
 
-  const suggestion = score >= 75 
-    ? 'Pertahankan ketenangan dan struktur argumen Anda, sudah sangat baik.'
-    : 'Cobalah menjawab dengan menyertakan alasan pemilihan metode secara langsung dan to-the-point.';
+  if (strengths.length === 0) {
+    strengths.push('Belum terlihat kekuatan yang signifikan dari jawaban ini.');
+  }
+  if (weaknesses.length === 0) {
+    weaknesses.push('Jawaban sudah cukup relevan, tetapi masih bisa dibuat lebih spesifik dan berbasis bukti.');
+  }
+
+  const suggestion = score >= 75
+    ? 'Pertahankan struktur jawaban, lalu tambahkan detail angka, tahapan, atau bukti dari penelitian agar lebih meyakinkan.'
+    : 'Gunakan struktur singkat: jawab inti pertanyaan, beri alasan, lalu hubungkan dengan data/metode/hasil penelitian Anda.';
 
   return {
     score,
@@ -327,10 +561,10 @@ export function generateFinalEvaluation(session: DefenseSession): any {
   const totalScore = session.transcript
     .filter(t => t.type === 'feedback' && typeof t.score === 'number')
     .reduce((acc, t) => acc + (t.score || 0), 0);
-  
+
   const feedbackCount = session.transcript.filter(t => t.type === 'feedback' && typeof t.score === 'number').length;
   let averageScore = feedbackCount > 0 ? Math.round(totalScore / feedbackCount) : 0;
-  
+
   const answerCount = session.transcript.filter(t => t.type === 'answer').length;
   if (averageScore === 0 && answerCount > 0) {
     averageScore = 50;

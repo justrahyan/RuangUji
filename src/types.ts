@@ -1,4 +1,4 @@
-export type ExaminerMode = 
+export type ExaminerMode =
   | 'santai'
   | 'kritis'
   | 'killer'
@@ -8,6 +8,18 @@ export type ExaminerMode =
   | 'implementasi';
 
 export type SessionLength = 'cepat' | 'normal' | 'intensif';
+
+export interface TrainingUsageStatus {
+  ok: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: string;
+  windowHours: number;
+  blocked: boolean;
+  error?: string;
+  message?: string;
+}
 
 export interface ResearchProfile {
   id: string;
@@ -23,6 +35,7 @@ export interface ResearchProfile {
   documentPreview?: string;
   documentName?: string;
   documentSize?: number;
+  docId?: string;
   examinerMode: ExaminerMode;
   sessionLength: SessionLength;
   questionCount: number;
@@ -37,6 +50,7 @@ export interface TranscriptItem {
   questionText?: string;
   answerText?: string;
   feedback?: string;
+  speechText?: string;
   score?: number;
   createdAt: string;
   timestamp?: string;
@@ -48,6 +62,17 @@ export interface AnswerEvaluation {
   weaknesses: string[];
   suggestion: string;
   improvedAnswer?: string;
+  speechText?: string;
+  answerCategory?: string;
+}
+
+export interface QuestionBankItem {
+  index: number;
+  question: string;
+  speechText?: string;
+  category: string;
+  provider?: string;
+  modelUsed?: string;
 }
 
 export interface DefenseSession {
@@ -59,6 +84,7 @@ export interface DefenseSession {
   status: 'active' | 'finished';
   createdAt: string;
   finishedAt?: string;
+  questionBank?: QuestionBankItem[];
 }
 
 export interface HistoryItem {

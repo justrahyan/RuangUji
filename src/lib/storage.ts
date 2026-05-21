@@ -84,3 +84,18 @@ export function deleteHistoryItem(id: string): void {
 export function clearHistory(): void {
   localStorage.removeItem(HISTORY_KEY);
 }
+
+// --- In-Memory Document Text Cache ---
+const inMemoryDocumentTexts = new Map<string, string>();
+
+export function setInMemoryDocumentText(key: string, text: string): void {
+  inMemoryDocumentTexts.set(key, text);
+}
+
+export function getInMemoryDocumentText(key: string): string | undefined {
+  return inMemoryDocumentTexts.get(key);
+}
+
+export function clearInMemoryDocumentTexts(): void {
+  inMemoryDocumentTexts.clear();
+}

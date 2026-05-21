@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Volume2, VolumeX, Bot, Mic, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText } from 'lucide-react';
+import { ArrowLeft, Volume2, VolumeX, Bot, Mic, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText, Loader2 } from 'lucide-react';
 import type { DefenseSession, TranscriptItem } from '../types';
-import { getActiveSession, clearActiveSession, saveActiveSession, saveHistoryItem } from '../lib/storage';
-import { generateQuestion, evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
-import { speakText, stopSpeaking } from '../lib/speech';
+import { getActiveSession, clearActiveSession, saveActiveSession, saveHistoryItem, getInMemoryDocumentText } from '../lib/storage';
+import { evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
+import { speakText, stopSpeaking, handleMuteToggle } from '../lib/speech';
 
 import VoiceOrb from '../components/VoiceOrb';
 import VoiceAnswer from '../components/VoiceAnswer';
@@ -14,8 +14,8 @@ import TextDetailModal from '../components/TextDetailModal';
 
 function normalizeFeedback(evaluation: any) {
   let score = Number(evaluation.score);
-  if (isNaN(score) || score === 0) {
-    score = 50;
+  if (isNaN(score)) {
+    score = 0;
   }
   score = Math.max(0, Math.min(100, score));
 
@@ -46,11 +46,18 @@ function normalizeFeedback(evaluation: any) {
     suggestion = suggestion.trim().replace(/\s+/g, ' ');
   }
 
+  const speechText =
+    typeof evaluation.speechText === 'string' && evaluation.speechText.trim()
+      ? evaluation.speechText.trim()
+      : '';
+
   return {
     score,
     strengths,
     weaknesses,
-    suggestion
+    suggestion,
+    speechText,
+    answerCategory: evaluation.answerCategory || ''
   };
 }
 
@@ -95,6 +102,7 @@ export default function DefenseRoomPage() {
   } | null>(null);
 
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
+  const [isFinishingSession, setIsFinishingSession] = useState(false);
   const [isEvaluatingAnswer, setIsEvaluatingAnswer] = useState(false);
   const [, setAiStatus] = useState<'idle' | 'generating-question' | 'evaluating' | 'fallback' | 'error'>('idle');
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
@@ -152,9 +160,26 @@ export default function DefenseRoomPage() {
 
   const toggleVoice = () => {
     const newVal = !voiceEnabled;
+
     setVoiceEnabled(newVal);
     localStorage.setItem('ruanguji_voice_muted', newVal ? 'false' : 'true');
-    if (!newVal) stopSpeaking();
+
+    handleMuteToggle();
+
+    // Jangan set orbState ke idle saat mute.
+    // Mute hanya membisukan/menahan suara, bukan membatalkan bacaan.
+  };
+
+  const buildResearchPayload = (research: DefenseSession['research']) => {
+    const memText = getInMemoryDocumentText(research.id) || getInMemoryDocumentText(research.docId || '') || research.documentText;
+
+    // Jika ada docId, server sudah menyimpan dokumen penuh di documentCache.
+    // Jangan kirim teks penuh lewat JSON karena bisa kepotong / kena limit request.
+    // documentText hanya dipakai sebagai fallback untuk mode lokal tanpa docId.
+    return {
+      ...research,
+      documentText: research.docId ? undefined : memText
+    };
   };
 
   const addTranscript = (item: TranscriptItem, currentSession: DefenseSession) => {
@@ -182,77 +207,170 @@ export default function DefenseRoomPage() {
     );
 
     const requestId = ++questionRequestIdRef.current;
-    let qText = '';
-    let category = 'umum';
-    let source: 'ai' | 'local-fallback' = 'ai';
-    let errorOccurred = false;
+    const researchPayload = buildResearchPayload(currentSession.research);
+    const currentIndex = currentSession.currentQuestionIndex;
+
+    const publishQuestion = (
+      baseSession: DefenseSession,
+      questionData: {
+        question: string;
+        speechText?: string;
+        category?: string;
+        provider?: string;
+        modelUsed?: string;
+      }
+    ) => {
+      if (requestId !== questionRequestIdRef.current) return;
+      if (hasUserAnsweredRef.current) return;
+
+      const questionText = String(questionData.question || '').trim();
+      const questionSpeechText = String(questionData.speechText || questionText).trim();
+
+      if (!questionText) {
+        throw new Error('Pertanyaan kosong dari AI.');
+      }
+
+      const questionId = Date.now().toString();
+
+      const newQuestion = {
+        id: questionId,
+        text: questionText,
+        category: questionData.category || 'umum',
+        source: 'ai' as const,
+        locked: true,
+      };
+
+      const qItem: TranscriptItem = {
+        id: questionId,
+        type: 'question',
+        content: questionText,
+        questionId,
+        questionText,
+        speechText: questionSpeechText,
+        createdAt: new Date().toISOString(),
+      };
+
+      const updatedSession: DefenseSession = {
+        ...baseSession,
+        transcript: [...baseSession.transcript, qItem],
+      };
+
+      setCurrentQuestion(newQuestion);
+      setSession(updatedSession);
+      saveActiveSession(updatedSession);
+
+      setSpokenText(questionText);
+      setIsGeneratingQuestion(false);
+      setAiStatus('idle');
+
+      setOrbState('speaking');
+
+      speakText(
+        questionSpeechText,
+        () => setOrbState('speaking'),
+        () => setOrbState('idle')
+      );
+    };
 
     try {
-      const res = await fetch('/api/ai/question', {
+      const cachedQuestion = currentSession.questionBank?.find(
+        item => item.index === currentIndex
+      );
+
+      if (cachedQuestion?.question) {
+        publishQuestion(currentSession, cachedQuestion);
+        return;
+      }
+
+      const remainingQuestions = Math.max(
+        1,
+        currentSession.research.questionCount - currentIndex
+      );
+
+      const batchSize = Math.min(5, remainingQuestions);
+
+      const res = await fetch('/api/ai/questions-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          research: currentSession.research,
+          research: researchPayload,
           examinerMode: currentSession.research.examinerMode,
-          questionIndex: currentSession.currentQuestionIndex,
-          previousQuestions
-        })
+          questionIndex: currentIndex,
+          batchSize,
+          previousQuestions,
+        }),
       });
 
-      if (!res.ok) throw new Error('API fallback');
       const data = await res.json();
-      qText = data.question;
-      category = data.category || 'umum';
-      if (data.provider === 'local-fallback') {
-        source = 'local-fallback';
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'AI gagal membuat batch pertanyaan.');
       }
-    } catch (error) {
-      console.warn('API unavailable, using local engine');
-      qText = generateQuestion(
-        currentSession.research,
-        currentSession.research.examinerMode,
-        currentSession.currentQuestionIndex,
-        previousQuestions
-      );
-      category = 'fallback';
-      source = 'local-fallback';
-      errorOccurred = true;
-    }
 
-    // Check if this request is still the active one and user hasn't answered
-    if (requestId !== questionRequestIdRef.current) return;
-    if (hasUserAnsweredRef.current) return;
+      const incomingQuestions = Array.isArray(data?.questions)
+        ? data.questions
+          .map((item: any) => {
+            const question = String(item.question || '').trim();
+            return {
+              index: Number(item.index),
+              question,
+              speechText: String(item.speechText || question).trim(),
+              category: String(item.category || 'umum').trim(),
+              provider: String(item.provider || data.provider || 'gemini'),
+              modelUsed: String(item.modelUsed || data.modelUsed || ''),
+            };
+          })
+          .filter((item: any) => Number.isFinite(item.index) && item.question.length > 10)
+        : [];
 
-    const questionId = Date.now().toString();
-    const newQuestion = {
-      id: questionId,
-      text: qText,
-      category: category,
-      source: source,
-      locked: true
-    };
+      if (!incomingQuestions.length) {
+        throw new Error('Respons AI tidak memiliki daftar pertanyaan yang valid.');
+      }
 
-    setCurrentQuestion(newQuestion);
+      const oldBank = currentSession.questionBank || [];
+      const incomingIndexes = new Set(incomingQuestions.map((q: any) => q.index));
 
-    const qItem: TranscriptItem = {
-      id: questionId,
-      type: 'question',
-      content: qText,
-      questionId: questionId,
-      questionText: qText,
-      createdAt: new Date().toISOString()
-    };
+      const mergedBank = [
+        ...oldBank.filter(q => !incomingIndexes.has(q.index)),
+        ...incomingQuestions,
+      ].sort((a, b) => a.index - b.index);
 
-    addTranscript(qItem, currentSession);
-    setSpokenText(qText);
-    setIsGeneratingQuestion(false);
-    setAiStatus(errorOccurred ? 'error' : source === 'local-fallback' ? 'fallback' : 'idle');
+      const sessionWithBank: DefenseSession = {
+        ...currentSession,
+        questionBank: mergedBank,
+      };
 
-    setOrbState('speaking');
-    if (voiceEnabled) {
-      speakText(qText, () => setOrbState('speaking'), () => setOrbState('idle'));
-    } else {
+      const selectedQuestion = mergedBank.find(q => q.index === currentIndex);
+
+      if (!selectedQuestion?.question) {
+        throw new Error('Batch pertanyaan berhasil dibuat, tetapi pertanyaan aktif tidak ditemukan.');
+      }
+
+      publishQuestion(sessionWithBank, selectedQuestion);
+    } catch (error: any) {
+      console.error('Gagal generate pertanyaan AI:', error);
+
+      if (requestId !== questionRequestIdRef.current) return;
+
+      setIsGeneratingQuestion(false);
+      setAiStatus('error');
       setOrbState('idle');
+
+      const message =
+        `AI gagal membuat pertanyaan dari dokumen.\n\n` +
+        `Penyebab: ${error?.message || 'Tidak diketahui'}\n\n` +
+        `Sistem sudah mencoba batch pertanyaan dan fallback beberapa model Gemini. ` +
+        `Jika tetap gagal, kemungkinan semua quota/rate limit model sedang habis. ` +
+        `Pertanyaan localEngine tetap dimatikan agar tidak muncul pertanyaan template yang tidak sesuai konteks.`;
+
+      const sysItem: TranscriptItem = {
+        id: Date.now().toString(),
+        type: 'system',
+        content: message,
+        createdAt: new Date().toISOString(),
+      };
+
+      addTranscript(sysItem, currentSession);
     }
   };
 
@@ -285,6 +403,8 @@ export default function DefenseRoomPage() {
 
     const updatedSession = addTranscript(ansItem, session);
 
+    const researchPayload = buildResearchPayload(updatedSession.research);
+
     let evaluation;
     let errorOccurred = false;
     try {
@@ -292,7 +412,7 @@ export default function DefenseRoomPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          research: updatedSession.research,
+          research: researchPayload,
           examinerMode: updatedSession.research.examinerMode,
           question: activeAnswerQuestionText,
           answer: activeAnswerText,
@@ -303,7 +423,7 @@ export default function DefenseRoomPage() {
       evaluation = await res.json();
     } catch (e) {
       console.warn('Fallback evaluate');
-      evaluation = evaluateAnswer(activeAnswerQuestionText, activeAnswerText, updatedSession.research, updatedSession.research.examinerMode);
+      evaluation = evaluateAnswer(activeAnswerQuestionText, activeAnswerText, researchPayload, updatedSession.research.examinerMode);
       errorOccurred = true;
     }
 
@@ -321,6 +441,9 @@ export default function DefenseRoomPage() {
     const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
 
     const feedbackText = `Skor: ${normEval.score}.\n\nKekuatan:\n${strengthsText}\n\nPerlu Diperbaiki:\n${weaknessesText}\n\nSaran:\n${normEval.suggestion}`;
+    const feedbackSpeechText =
+      normEval.speechText ||
+      `Skor ${normEval.score}. ${normEval.suggestion}`;
 
     const fbItem: TranscriptItem = {
       id: Date.now().toString(),
@@ -330,6 +453,7 @@ export default function DefenseRoomPage() {
       questionText: activeAnswerQuestionText,
       answerText: activeAnswerText,
       feedback: feedbackText,
+      speechText: feedbackSpeechText,
       score: normEval.score,
       createdAt: new Date().toISOString()
     };
@@ -341,15 +465,16 @@ export default function DefenseRoomPage() {
     setAiStatus(errorOccurred ? 'error' : 'idle');
 
     setOrbState('speaking');
-    if (voiceEnabled) {
-      speakText(feedbackText, () => setOrbState('speaking'), () => setOrbState('idle'));
-    } else {
-      setOrbState('idle');
-    }
+
+    speakText(
+      feedbackSpeechText,
+      () => setOrbState('speaking'),
+      () => setOrbState('idle')
+    );
   };
 
   const handleNextQuestion = () => {
-    if (!session || isGeneratingQuestion || isEvaluatingAnswer) return;
+    if (!session || isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession) return;
     stopSpeaking();
 
     if (session.currentQuestionIndex + 1 >= session.research.questionCount) {
@@ -385,74 +510,102 @@ export default function DefenseRoomPage() {
   };
 
   const executeFinishSession = async () => {
+    if (isFinishingSession) return;
+
     const latestSession = getActiveSession() || session;
     if (!latestSession) return;
+
+    setIsFinishingSession(true);
     stopSpeaking();
     setOrbState('thinking');
     setSpokenMode('feedback');
     setSpokenText('Menyusun evaluasi akhir...');
 
-    let finalEval;
     try {
-      const res = await fetch('/api/ai/final-evaluation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          research: latestSession.research,
-          examinerMode: latestSession.research.examinerMode,
-          transcript: latestSession.transcript
-        })
-      });
-      if (!res.ok) throw new Error('fallback');
-      finalEval = await res.json();
-    } catch (e) {
-      console.warn('Fallback final eval');
-      finalEval = generateFinalEvaluation(latestSession);
-    }
+      const researchPayload = buildResearchPayload(latestSession.research);
 
-    const avgScore = calculateAverageScore(latestSession.transcript);
-    let finalScore = Number(finalEval.score);
-    if (isNaN(finalScore) || finalScore === 0) {
-      if (avgScore > 0) {
-        finalScore = avgScore;
-      } else {
-        finalScore = isNaN(finalScore) ? 0 : finalScore;
+      let finalEval;
+      try {
+        const res = await fetch('/api/ai/final-evaluation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            research: researchPayload,
+            examinerMode: latestSession.research.examinerMode,
+            transcript: latestSession.transcript
+          })
+        });
+
+        if (!res.ok) throw new Error('fallback');
+        finalEval = await res.json();
+      } catch (e) {
+        console.warn('Fallback final eval');
+        finalEval = generateFinalEvaluation({ ...latestSession, research: researchPayload });
       }
-    }
-    finalScore = Math.max(0, Math.min(100, finalScore));
-    finalEval.score = finalScore;
 
-    const hasAnswers = latestSession.transcript.some(t => t.type === 'answer');
-    if (hasAnswers) {
-      saveHistoryItem({
-        id: latestSession.id,
-        title: latestSession.research.title,
-        examinerMode: latestSession.research.examinerMode,
-        score: finalScore,
-        questionCount: latestSession.research.questionCount,
-        summary: finalEval.summary,
-        createdAt: new Date().toISOString(),
-        sessionType: latestSession.research.sessionType,
-        field: latestSession.research.field,
-        method: latestSession.research.method,
-        sessionLength: latestSession.research.sessionLength,
-        transcript: latestSession.transcript,
-        strengths: finalEval.strengths,
-        weaknesses: finalEval.weaknesses,
-        nextPractice: finalEval.nextPractice || ['Terus berlatih']
-      });
-      localStorage.setItem('ruanguji_latest_eval', JSON.stringify({
-        score: finalScore,
-        summary: finalEval.summary,
-        strengths: finalEval.strengths,
-        weaknesses: finalEval.weaknesses,
-        nextPractice: finalEval.nextPractice || ['Terus berlatih']
-      }));
-      clearActiveSession();
-      navigate('/evaluation');
-    } else {
+      const avgScore = calculateAverageScore(latestSession.transcript);
+
+      let finalScore = Number(finalEval.score);
+      if (isNaN(finalScore) || finalScore === 0) {
+        if (avgScore > 0) {
+          finalScore = avgScore;
+        } else {
+          finalScore = isNaN(finalScore) ? 0 : finalScore;
+        }
+      }
+
+      finalScore = Math.max(0, Math.min(100, finalScore));
+      finalEval.score = finalScore;
+
+      const hasAnswers = latestSession.transcript.some(t => t.type === 'answer');
+
+      if (hasAnswers) {
+        saveHistoryItem({
+          id: latestSession.id,
+          title: latestSession.research.title,
+          examinerMode: latestSession.research.examinerMode,
+          score: finalScore,
+          questionCount: latestSession.research.questionCount,
+          summary: finalEval.summary,
+          createdAt: new Date().toISOString(),
+          sessionType: latestSession.research.sessionType,
+          field: latestSession.research.field,
+          method: latestSession.research.method,
+          sessionLength: latestSession.research.sessionLength,
+          transcript: latestSession.transcript,
+          strengths: finalEval.strengths,
+          weaknesses: finalEval.weaknesses,
+          nextPractice: finalEval.nextPractice || ['Terus berlatih']
+        });
+
+        localStorage.setItem('ruanguji_latest_eval', JSON.stringify({
+          score: finalScore,
+          summary: finalEval.summary,
+          strengths: finalEval.strengths,
+          weaknesses: finalEval.weaknesses,
+          nextPractice: finalEval.nextPractice || ['Terus berlatih']
+        }));
+
+        clearActiveSession();
+        navigate('/evaluation');
+        return;
+      }
+
       clearActiveSession();
       navigate('/setup');
+    } catch (error) {
+      console.error('Gagal menyelesaikan sesi:', error);
+      setIsFinishingSession(false);
+      setOrbState('idle');
+
+      const sysItem: TranscriptItem = {
+        id: Date.now().toString(),
+        type: 'system',
+        content: 'Gagal menyusun evaluasi akhir. Silakan coba klik tombol selesai sekali lagi.',
+        createdAt: new Date().toISOString(),
+      };
+
+      addTranscript(sysItem, latestSession);
     }
   };
 
@@ -508,14 +661,18 @@ export default function DefenseRoomPage() {
   const { research, currentQuestionIndex } = session;
   const currentQ = currentQuestionIndex + 1;
 
-  const orbStateLabel = isGeneratingQuestion ? 'Menyiapkan pertanyaan...' :
-    isEvaluatingAnswer ? 'Menganalisis jawaban...' :
+  const orbStateLabel = isGeneratingQuestion ? 'Menyiapkan' :
+    isEvaluatingAnswer ? 'Menganalisis jawaban' :
       orbState === 'idle' ? 'Siap menguji' :
-        orbState === 'speaking' ? 'Sedang berbicara...' :
-          orbState === 'listening' ? 'Mendengarkan...' : 'Menganalisis...';
+        orbState === 'speaking' ? 'Sedang berbicara' :
+          orbState === 'listening' ? 'Mendengarkan' : 'Menganalisis';
 
   const activeQuestionItem = session.transcript.slice().reverse().find(t => t.type === 'question');
   const activeQuestion = activeQuestionItem ? activeQuestionItem.content : '';
+
+  const finishingTitle = 'Menyusun Evaluasi Akhir';
+  const finishingMessage =
+    'Mohon tunggu sebentar. RuangUji sedang menyimpan transkrip, menghitung skor akhir, dan menyiapkan halaman evaluasi.';
 
   return (
     <div
@@ -588,10 +745,17 @@ export default function DefenseRoomPage() {
             </select>
 
             <button
-              onClick={() => setShowEndModal(true)}
+              onClick={() => {
+                if (!isFinishingSession) setShowEndModal(true);
+              }}
+              disabled={isFinishingSession}
               className="btn btn-secondary defense-end-btn"
+              style={{
+                opacity: isFinishingSession ? 0.65 : 1,
+                cursor: isFinishingSession ? 'wait' : 'pointer',
+              }}
             >
-              Akhiri Sesi
+              {isFinishingSession ? 'Menyimpan...' : 'Akhiri Sesi'}
             </button>
           </div>
 
@@ -738,9 +902,45 @@ export default function DefenseRoomPage() {
         >
           <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-soft)' }}>
             <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: orbState === 'idle' ? '#94a3b8' : 'var(--primary-blue)', animation: orbState !== 'idle' ? 'orbPulse 2s infinite' : 'none' }}></div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: orbState === 'idle' ? 'var(--text-secondary)' : 'var(--primary-blue)' }}>{orbStateLabel}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button
+                onClick={toggleVoice}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                  outline: 'none'
+                }}
+                title={voiceEnabled ? "Mute Suara AI" : "Unmute Suara AI"}
+              >
+                {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                <span>{voiceEnabled ? 'Suara AI Aktif' : 'Mute'}</span>
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: orbState === 'idle' ? '#94a3b8' : 'var(--primary-blue)', animation: orbState !== 'idle' ? 'orbPulse 2s infinite' : 'none' }}></div>
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: orbState === 'idle' ? 'var(--text-secondary)' : 'var(--primary-blue)',
+                    whiteSpace: 'nowrap',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {orbStateLabel}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -917,8 +1117,24 @@ export default function DefenseRoomPage() {
                 {/* Next Question Button inside Chat flow */}
                 {hasFeedback && !isVoiceMode && (
                   <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem', paddingBottom: '1rem' }}>
-                    <button className="btn btn-primary fade-up" onClick={handleNextQuestion} disabled={isGeneratingQuestion || isEvaluatingAnswer} style={{ padding: '0.875rem 2rem', fontSize: '0.9375rem', borderRadius: '999px', boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)' }}>
-                      {currentQ >= research.questionCount ? 'Selesai & Lihat Evaluasi' : 'Lanjut ke Pertanyaan Berikutnya'}
+                    <button
+                      className="btn btn-primary fade-up"
+                      onClick={handleNextQuestion}
+                      disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
+                      style={{
+                        padding: '0.875rem 2rem',
+                        fontSize: '0.9375rem',
+                        borderRadius: '999px',
+                        boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)',
+                        opacity: isFinishingSession ? 0.75 : 1,
+                        cursor: isFinishingSession ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {isFinishingSession
+                        ? 'Menyusun Evaluasi...'
+                        : currentQ >= research.questionCount
+                          ? 'Selesai & Lihat Evaluasi'
+                          : 'Lanjut ke Pertanyaan Berikutnya'}
                     </button>
                   </div>
                 )}
@@ -944,8 +1160,24 @@ export default function DefenseRoomPage() {
 
                 <div>
                   {hasFeedback ? (
-                    <button className="btn btn-primary fade-up" onClick={handleNextQuestion} disabled={isGeneratingQuestion || isEvaluatingAnswer} style={{ padding: '0.625rem 1.5rem', fontSize: '0.875rem', borderRadius: '999px', boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)' }}>
-                      {currentQ >= research.questionCount ? 'Selesai' : 'Pertanyaan Berikutnya'}
+                    <button
+                      className="btn btn-primary fade-up"
+                      onClick={handleNextQuestion}
+                      disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
+                      style={{
+                        padding: '0.625rem 1.5rem',
+                        fontSize: '0.875rem',
+                        borderRadius: '999px',
+                        boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)',
+                        opacity: isFinishingSession ? 0.75 : 1,
+                        cursor: isFinishingSession ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {isFinishingSession
+                        ? 'Menyusun...'
+                        : currentQ >= research.questionCount
+                          ? 'Selesai'
+                          : 'Pertanyaan Berikutnya'}
                     </button>
                   ) : (
                     <VoiceAnswer
@@ -1011,7 +1243,6 @@ export default function DefenseRoomPage() {
                       <Mic size={16} />
                     </button>
                   )}
-
                   <button
                     onClick={() => setIsVoiceMode(true)}
                     disabled={isGeneratingQuestion || isEvaluatingAnswer}
@@ -1019,6 +1250,25 @@ export default function DefenseRoomPage() {
                     title="Masuk Voice Stage"
                   >
                     <Speech size={16} />
+                  </button>
+                  <button
+                    onClick={toggleVoice}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
+                      color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
+                      border: '1px solid var(--border-color)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
+                  >
+                    {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                   </button>
                 </div>
               </div>
@@ -1052,6 +1302,93 @@ export default function DefenseRoomPage() {
 
       </main>
 
+      {isFinishingSession && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Menyusun evaluasi akhir"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9998,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            backgroundColor: 'rgba(15, 23, 42, 0.52)',
+            backdropFilter: 'blur(5px)',
+          }}
+        >
+          <div
+            className="fade-up"
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              backgroundColor: 'var(--white)',
+              borderRadius: 28,
+              padding: '1.5rem',
+              border: '1px solid rgba(226, 232, 240, 0.9)',
+              boxShadow: '0 30px 80px rgba(15, 23, 42, 0.28)',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 999,
+                margin: '0 auto 1rem auto',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#eff6ff',
+                color: 'var(--primary-blue)',
+                border: '1px solid #bfdbfe',
+              }}
+            >
+              <Loader2 size={30} style={{ animation: 'spin 0.85s linear infinite' }} />
+            </div>
+
+            <h3
+              style={{
+                fontSize: '1.125rem',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                marginBottom: '0.5rem',
+              }}
+            >
+              {finishingTitle}
+            </h3>
+
+            <p
+              style={{
+                fontSize: '0.92rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+                margin: '0 auto 1rem auto',
+                maxWidth: 360,
+              }}
+            >
+              {finishingMessage}
+            </p>
+
+            <div
+              style={{
+                padding: '0.8rem 1rem',
+                borderRadius: 16,
+                backgroundColor: '#f8fafc',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-muted)',
+                fontSize: '0.82rem',
+                lineHeight: 1.5,
+              }}
+            >
+              Jangan tutup halaman ini sampai proses selesai.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       <ConfirmModal
         isOpen={showBackModal}
@@ -1076,7 +1413,9 @@ export default function DefenseRoomPage() {
         type="danger"
         onConfirm={() => {
           setShowEndModal(false);
-          executeFinishSession();
+          window.setTimeout(() => {
+            executeFinishSession();
+          }, 80);
         }}
         onClose={() => setShowEndModal(false)}
       />

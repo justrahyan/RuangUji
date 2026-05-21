@@ -5,17 +5,170 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import { generateDefenseQuestionAI, evaluateDefenseAnswerAI, generateFinalEvaluationAI } from './server/aiProvider.js';
-import { generateQuestion, evaluateAnswer, generateFinalEvaluation } from './src/lib/localEngine.js';
+import { randomUUID, createHash } from 'crypto';
+import {
+  generateDefenseQuestionAI,
+  generateDefenseQuestionsBatchAI,
+  evaluateDefenseAnswerAI,
+  generateFinalEvaluationAI,
+  documentCache
+} from './server/aiProvider.js';
+import { evaluateAnswer, generateFinalEvaluation } from './src/lib/localEngine.js';
 
 const app = express();
+
+app.set('trust proxy', true);
+
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Document Extraction Helpers
+// Training Session Usage Limit
+type UsageRecord = {
+  windowKey: number;
+  used: number;
+  lastUsedAt?: string;
+};
+
+type UsageStore = Record<string, UsageRecord>;
+
+const usageStorePath = path.join(__dirname, '.ruanguji-usage.json');
+
+const SESSION_LIMIT = Math.max(1, Number(process.env.TRAINING_SESSION_LIMIT || 5));
+const WINDOW_HOURS = Math.max(1, Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8));
+const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000;
+
+function readUsageStore(): UsageStore {
+  try {
+    if (!fs.existsSync(usageStorePath)) return {};
+    const raw = fs.readFileSync(usageStorePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    console.warn('[usage] gagal membaca usage store:', error);
+    return {};
+  }
+}
+
+function writeUsageStore(store: UsageStore) {
+  try {
+    fs.writeFileSync(usageStorePath, JSON.stringify(store, null, 2), 'utf-8');
+  } catch (error) {
+    console.warn('[usage] gagal menyimpan usage store:', error);
+  }
+}
+
+function getClientIp(req: express.Request) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : typeof forwarded === 'string'
+      ? forwarded.split(',')[0]
+      : '';
+
+  return (
+    forwardedIp ||
+    req.ip ||
+    req.socket.remoteAddress ||
+    'unknown'
+  ).trim();
+}
+
+function getUsageIdentity(req: express.Request) {
+  // Tidak pakai browser/localStorage/user-agent.
+  // Basis limit utama adalah IP agar tidak mudah di-bypass dengan pindah browser.
+  const ip = getClientIp(req);
+
+  return createHash('sha256')
+    .update(ip)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+function getWindowKey(now = Date.now()) {
+  return Math.floor(now / WINDOW_MS);
+}
+
+function getResetAt(windowKey = getWindowKey()) {
+  return new Date((windowKey + 1) * WINDOW_MS).toISOString();
+}
+
+function cleanupOldUsage(store: UsageStore, activeWindowKey: number) {
+  for (const key of Object.keys(store)) {
+    if (store[key].windowKey < activeWindowKey - 1) {
+      delete store[key];
+    }
+  }
+}
+
+function getUsageStatus(req: express.Request) {
+  const store = readUsageStore();
+  const identity = getUsageIdentity(req);
+  const currentWindow = getWindowKey();
+
+  cleanupOldUsage(store, currentWindow);
+
+  let record = store[identity];
+
+  if (!record || record.windowKey !== currentWindow) {
+    record = {
+      windowKey: currentWindow,
+      used: 0,
+    };
+    store[identity] = record;
+    writeUsageStore(store);
+  }
+
+  const used = Math.max(0, Number(record.used || 0));
+  const remaining = Math.max(0, SESSION_LIMIT - used);
+
+  return {
+    store,
+    identity,
+    record,
+    status: {
+      ok: true,
+      limit: SESSION_LIMIT,
+      used,
+      remaining,
+      resetAt: getResetAt(currentWindow),
+      windowHours: WINDOW_HOURS,
+      blocked: remaining <= 0,
+    },
+  };
+}
+
+function consumeUsage(req: express.Request) {
+  const { store, identity, record, status } = getUsageStatus(req);
+
+  if (status.remaining <= 0) {
+    return {
+      allowed: false,
+      status,
+    };
+  }
+
+  record.used = Math.max(0, Number(record.used || 0)) + 1;
+  record.lastUsedAt = new Date().toISOString();
+  store[identity] = record;
+
+  writeUsageStore(store);
+
+  const used = record.used;
+  const remaining = Math.max(0, SESSION_LIMIT - used);
+
+  return {
+    allowed: true,
+    status: {
+      ...status,
+      used,
+      remaining,
+      blocked: remaining <= 0,
+    },
+  };
+}
 
 /** Normalize line endings, collapse whitespace, strip noise */
 function cleanExtractedText(raw: string): string {
@@ -135,6 +288,55 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 }
 });
 
+app.get('/api/usage/status', (req, res) => {
+  if (process.env.DEV_BYPASS_USAGE_LIMIT === 'true') {
+    return res.json({
+      ok: true,
+      limit: 999,
+      used: 0,
+      remaining: 999,
+      resetAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      windowHours: Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8),
+      blocked: false,
+      message: 'Developer bypass aktif.',
+    });
+  }
+
+  const { status } = getUsageStatus(req);
+  return res.json(status);
+});
+
+app.post('/api/usage/start-session', (req, res) => {
+  if (process.env.DEV_BYPASS_USAGE_LIMIT === 'true') {
+    return res.json({
+      ok: true,
+      limit: 999,
+      used: 0,
+      remaining: 999,
+      resetAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      windowHours: Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8),
+      blocked: false,
+      message: 'Developer bypass aktif. Limit latihan tidak dihitung.',
+    });
+  }
+
+  const result = consumeUsage(req);
+
+  if (!result.allowed) {
+    return res.status(429).json({
+      ...result.status,
+      ok: false,
+      error: `Batas latihan sudah habis. Maksimal ${SESSION_LIMIT} sesi setiap ${WINDOW_HOURS} jam.`,
+    });
+  }
+
+  return res.json({
+    ...result.status,
+    ok: true,
+    message: 'Sesi latihan berhasil dimulai.',
+  });
+});
+
 // POST /api/extract-document
 app.post('/api/extract-document', upload.single('file'), async (req, res) => {
   try {
@@ -178,18 +380,35 @@ app.post('/api/extract-document', upload.single('file'), async (req, res) => {
     }
 
     const cleaned = cleanExtractedText(rawText);
-    // text = full document context for AI (up to 30000 chars, section-aware)
-    const text = buildDocumentContext(cleaned, 30000);
-    // preview = short summary for user display / ringkasan button (up to 2000 chars)
+
+    // Ini teks penuh dari awal sampai akhir dokumen.
+    // Jangan pakai buildDocumentContext untuk AI, karena itu hanya sampling/section tertentu.
+    const text = cleaned;
+
+    // Preview hanya untuk tampilan user, bukan sumber utama AI.
     const preview = buildDocumentPreview(cleaned, 2000);
+
+    const docId = randomUUID();
+
+    // Simpan teks penuh ke cache server.
+    // DefenseRoom cukup mengirim docId, lalu aiProvider ambil dokumen penuh dari documentCache.
+    documentCache.set(docId, text);
+
+    if (documentCache.size > 100) {
+      const firstKey = documentCache.keys().next().value;
+      if (firstKey !== undefined) {
+        documentCache.delete(firstKey);
+      }
+    }
 
     return res.json({
       ok: true,
+      docId,
       text,
       preview,
       fileName: originalname,
       size,
-      extractedLength: cleaned.length
+      extractedChars: text.length,
     });
   } catch (err: any) {
     console.error('[extract-document] Unexpected error:', err.message);
@@ -197,15 +416,50 @@ app.post('/api/extract-document', upload.single('file'), async (req, res) => {
   }
 });
 
+app.get('/api/config', (req, res) => {
+  res.json({
+    voiceDefault: process.env.VOICE_DEFAULT || 'calm-female'
+  });
+});
+
+app.post('/api/ai/questions-batch', async (req, res) => {
+  try {
+    const data = await generateDefenseQuestionsBatchAI(req.body);
+    return res.json({
+      ...data,
+      provider: 'gemini',
+    });
+  } catch (error: any) {
+    console.error('AI Questions Batch Error:', error?.message || error);
+
+    return res.status(500).json({
+      ok: false,
+      error:
+        error?.message ||
+        'Gagal membuat batch pertanyaan dari AI. Periksa GEMINI_API_KEY, GEMINI_MODEL, quota, atau koneksi server.',
+      provider: 'gemini-error',
+    });
+  }
+});
+
 // AI Endpoints
 app.post('/api/ai/question', async (req, res) => {
   try {
     const data = await generateDefenseQuestionAI(req.body);
-    res.json(data);
+    return res.json({
+      ...data,
+      provider: 'gemini',
+    });
   } catch (error: any) {
-    console.error('AI Question Error:', error.message);
-    const localQuestion = generateQuestion(req.body.research, req.body.examinerMode, req.body.questionIndex, req.body.previousQuestions);
-    res.json({ question: localQuestion, category: "fallback", reason: `AI Provider Error: ${error.message}`, provider: "local-fallback" });
+    console.error('AI Question Error:', error?.message || error);
+
+    return res.status(500).json({
+      ok: false,
+      error:
+        error?.message ||
+        'Gagal membuat pertanyaan dari AI. Periksa GEMINI_API_KEY, GEMINI_MODEL, quota, atau koneksi server.',
+      provider: 'gemini-error',
+    });
   }
 });
 

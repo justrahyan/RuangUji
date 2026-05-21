@@ -4,7 +4,7 @@
 
 Project ini dibuat untuk program **#JuaraVibeCoding** dengan mengambil tema **Edukasi: Sang Teman Belajar**. RuangUji memungkinkan pengguna mengunggah dokumen penelitian, memilih mode penguji, menjalani simulasi tanya-jawab melalui mode chat atau voice, lalu mendapatkan evaluasi jawaban secara langsung.
 
-**Live Demo:** [https://ruanguji-727794265175.asia-southeast2.run.app/](https://ruanguji-727794265175.asia-southeast
+**Live Demo:** [https://ruanguji-727794265175.asia-southeast2.run.app/](https://ruanguji-727794265175.asia-southeast)
 
 > Catatan: AI dapat membuat kesalahan atau kurang sesuai konteks. Hasil simulasi digunakan sebagai bahan latihan, bukan penilaian final.
 

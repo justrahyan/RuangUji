@@ -3,290 +3,429 @@ import { Award, CheckCircle2, AlertCircle, FileText, X } from 'lucide-react';
 import type { TranscriptItem } from '../types';
 
 type MetadataItem = {
-    label: string;
-    value?: string | number | null;
+  label: string;
+  value?: string | number | null;
 };
 
 type TranscriptGroup = {
-    id: string;
-    number: number;
-    question?: TranscriptItem;
-    answer?: TranscriptItem;
-    feedback?: TranscriptItem;
+  id: string;
+  number: number;
+  question?: TranscriptItem;
+  answer?: TranscriptItem;
+  feedback?: TranscriptItem;
 };
 
 type EvaluationResultLayoutProps = {
-    title: string;
-    subtitle?: string;
-    score: number;
-    summary?: string;
-    strengths?: string[];
-    weaknesses?: string[];
-    nextPractice?: string[];
-    actions?: ReactNode;
-    topAction?: ReactNode;
-    badges?: ReactNode;
-    metadata?: MetadataItem[];
-    transcript?: TranscriptItem[];
-    showTranscript?: boolean;
+  title: string;
+  subtitle?: string;
+  score: number;
+  summary?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  nextPractice?: string[];
+  actions?: ReactNode;
+  topAction?: ReactNode;
+  badges?: ReactNode;
+  metadata?: MetadataItem[];
+  transcript?: TranscriptItem[];
+  showTranscript?: boolean;
 };
 
 function safeList(list: unknown, fallback: string[]) {
-    if (!Array.isArray(list)) return fallback;
-    const cleaned = list.map((item) => String(item || '').trim()).filter(Boolean);
-    return cleaned.length ? cleaned : fallback;
+  if (!Array.isArray(list)) return fallback;
+  const cleaned = list.map((item) => String(item || '').trim()).filter(Boolean);
+  return cleaned.length ? cleaned : fallback;
 }
 
 function scoreStatus(score: number) {
-    if (score >= 80) return 'Sangat Baik';
-    if (score >= 60) return 'Cukup Baik';
-    return 'Perlu Latihan';
+  if (score >= 80) return 'Sangat Baik';
+  if (score >= 60) return 'Cukup Baik';
+  return 'Perlu Latihan';
 }
 
-function previewText(text = '', max = 240) {
-    const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (!cleaned) return '-';
-    if (cleaned.length <= max) return cleaned;
-    return `${cleaned.slice(0, max).trim()}...`;
+function scoreTone(score: number) {
+  if (score >= 80) return { bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' };
+  if (score >= 60) return { bg: '#eff6ff', color: 'var(--primary-blue)', border: '#bfdbfe' };
+  return { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' };
+}
+
+function previewText(text = '', max = 180) {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '-';
+  if (cleaned.length <= max) return cleaned;
+  return `${cleaned.slice(0, max).trim()}...`;
 }
 
 function buildTranscriptGroups(transcript: TranscriptItem[] = []): TranscriptGroup[] {
-    const groups: TranscriptGroup[] = [];
+  const groups: TranscriptGroup[] = [];
 
-    transcript.forEach((item) => {
-        if (item.type === 'question') {
-            groups.push({
-                id: item.id || `q-${groups.length}`,
-                number: groups.length + 1,
-                question: item,
-            });
-            return;
-        }
+  transcript.forEach((item) => {
+    if (item.type === 'question') {
+      groups.push({
+        id: item.id || `q-${groups.length}`,
+        number: groups.length + 1,
+        question: item,
+      });
+      return;
+    }
 
-        if (item.type === 'answer') {
-            const target = [...groups].reverse().find((group) => !group.answer);
-            if (target) target.answer = item;
-            else {
-                groups.push({
-                    id: item.id || `a-${groups.length}`,
-                    number: groups.length + 1,
-                    answer: item,
-                });
-            }
-            return;
-        }
+    if (item.type === 'answer') {
+      const target = [...groups].reverse().find((group) => !group.answer);
+      if (target) target.answer = item;
+      else {
+        groups.push({
+          id: item.id || `a-${groups.length}`,
+          number: groups.length + 1,
+          answer: item,
+        });
+      }
+      return;
+    }
 
-        if (item.type === 'feedback') {
-            const target = [...groups].reverse().find((group) => !group.feedback);
-            if (target) target.feedback = item;
-            else {
-                groups.push({
-                    id: item.id || `f-${groups.length}`,
-                    number: groups.length + 1,
-                    feedback: item,
-                });
-            }
-        }
-    });
+    if (item.type === 'feedback') {
+      const target = [...groups].reverse().find((group) => !group.feedback);
+      if (target) target.feedback = item;
+      else {
+        groups.push({
+          id: item.id || `f-${groups.length}`,
+          number: groups.length + 1,
+          feedback: item,
+        });
+      }
+    }
+  });
 
-    return groups;
+  return groups;
+}
+
+function CompactListCard({
+  title,
+  icon,
+  items,
+  tone,
+}: {
+  title: string;
+  icon: ReactNode;
+  items: string[];
+  tone: 'green' | 'orange' | 'blue';
+}) {
+  return (
+    <div className={`eval-card eval-list-card eval-list-${tone}`}>
+      <div className="eval-list-head">
+        <h4>
+          {icon}
+          {title}
+        </h4>
+
+        <span className="eval-list-count">
+          {items.length} poin
+        </span>
+      </div>
+
+      <div className="eval-list-body">
+        <div className="custom-scrollbar eval-list-scroll">
+          <ul>
+            {items.map((item, index) => (
+              <li key={`${title}-${index}`}>
+                <span>{index + 1}</span>
+                <p>{item}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DetailModal({ group, onClose }: { group: TranscriptGroup | null; onClose: () => void }) {
-    if (!group) return null;
+  if (!group) return null;
 
-    return (
-        <div
-            role="dialog"
-            aria-modal="true"
-            onClick={onClose}
-            className="eval-detail-overlay"
-        >
-            <div onClick={(e) => e.stopPropagation()} className="eval-detail-modal">
-                <div className="eval-detail-header">
-                    <div>
-                        <p className="eval-detail-kicker">PERTANYAAN {group.number}</p>
-                        <h3 className="eval-detail-title">Detail Tanya-Jawab</h3>
-                    </div>
-                    <button onClick={onClose} className="eval-detail-close" aria-label="Tutup modal">
-                        <X size={18} />
-                    </button>
-                </div>
-
-                <div className="custom-scrollbar eval-detail-body">
-                    <TranscriptBlock label="Penguji" content={group.question?.content || '-'} tone="neutral" />
-                    <TranscriptBlock label="Anda" content={group.answer?.content || '-'} tone="blue" />
-                    <TranscriptBlock label="Umpan Balik" content={group.feedback?.content || '-'} tone="green" score={group.feedback?.score} />
-                </div>
-            </div>
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} className="eval-detail-overlay">
+      <div onClick={(e) => e.stopPropagation()} className="eval-detail-modal">
+        <div className="eval-detail-header">
+          <div>
+            <p className="eval-detail-kicker">PERTANYAAN {group.number}</p>
+            <h3 className="eval-detail-title">Detail Tanya-Jawab</h3>
+          </div>
+          <button onClick={onClose} className="eval-detail-close" aria-label="Tutup modal">
+            <X size={18} />
+          </button>
         </div>
-    );
+
+        <div className="custom-scrollbar eval-detail-body">
+          <TranscriptBlock label="Penguji" content={group.question?.content || '-'} tone="neutral" />
+          <TranscriptBlock label="Anda" content={group.answer?.content || '-'} tone="blue" />
+          <TranscriptBlock
+            label="Umpan Balik"
+            content={group.feedback?.content || '-'}
+            tone="green"
+            score={group.feedback?.score}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function TranscriptBlock({ label, content, tone, score }: { label: string; content: string; tone: 'neutral' | 'blue' | 'green'; score?: number }) {
-    const styleMap = {
-        neutral: { bg: '#f8fafc', border: '#e5e7eb', label: 'var(--text-muted)', text: 'var(--text-primary)' },
-        blue: { bg: '#eff6ff', border: '#bfdbfe', label: 'var(--primary-blue)', text: '#1e3a8a' },
-        green: { bg: '#f0fdf4', border: '#bbf7d0', label: '#15803d', text: '#166534' },
-    }[tone];
+function TranscriptBlock({
+  label,
+  content,
+  tone,
+  score,
+}: {
+  label: string;
+  content: string;
+  tone: 'neutral' | 'blue' | 'green';
+  score?: number;
+}) {
+  const styleMap = {
+    neutral: { bg: '#f8fafc', border: '#e5e7eb', label: 'var(--text-muted)', text: 'var(--text-primary)' },
+    blue: { bg: '#eff6ff', border: '#bfdbfe', label: 'var(--primary-blue)', text: '#1e3a8a' },
+    green: { bg: '#f0fdf4', border: '#bbf7d0', label: '#15803d', text: '#166534' },
+  }[tone];
 
-    return (
-        <div style={{ backgroundColor: styleMap.bg, border: `1px solid ${styleMap.border}`, borderRadius: '18px', padding: '1rem 1.125rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.625rem' }}>
-                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: styleMap.label, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</span>
-                {typeof score === 'number' && (
-                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803d', backgroundColor: 'var(--white)', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '0.2rem 0.55rem' }}>Skor: {score}</span>
-                )}
-            </div>
-            <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.65, color: styleMap.text, whiteSpace: 'pre-wrap' }}>{content}</p>
-        </div>
-    );
+  return (
+    <div
+      style={{
+        backgroundColor: styleMap.bg,
+        border: `1px solid ${styleMap.border}`,
+        borderRadius: '18px',
+        padding: '1rem 1.125rem',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          alignItems: 'center',
+          marginBottom: '0.625rem',
+        }}
+      >
+        <span
+          style={{
+            fontSize: '0.7rem',
+            fontWeight: 800,
+            color: styleMap.label,
+            textTransform: 'uppercase',
+            letterSpacing: '0.03em',
+          }}
+        >
+          {label}
+        </span>
+        {typeof score === 'number' && (
+          <span
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              color: '#15803d',
+              backgroundColor: 'var(--white)',
+              border: '1px solid #bbf7d0',
+              borderRadius: '999px',
+              padding: '0.2rem 0.55rem',
+            }}
+          >
+            Skor: {score}
+          </span>
+        )}
+      </div>
+      <p
+        style={{
+          margin: 0,
+          fontSize: '0.9rem',
+          lineHeight: 1.65,
+          color: styleMap.text,
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {content}
+      </p>
+    </div>
+  );
 }
 
 function TranscriptPreview({ transcript }: { transcript?: TranscriptItem[] }) {
-    const [selectedGroup, setSelectedGroup] = useState<TranscriptGroup | null>(null);
-    const groups = useMemo(() => buildTranscriptGroups(transcript || []), [transcript]);
+  const [selectedGroup, setSelectedGroup] = useState<TranscriptGroup | null>(null);
+  const groups = useMemo(() => buildTranscriptGroups(transcript || []), [transcript]);
 
-    return (
-        <>
-            <div className="card soft-shadow fade-up transcript-card">
-                <h3 className="transcript-title">
-                    <FileText size={16} color="var(--primary-blue)" /> Rekaman Percakapan Tanya-Jawab
-                </h3>
+  return (
+    <>
+      <div className="eval-card transcript-card">
+        <div className="transcript-title-row">
+          <div>
+            <h3 className="transcript-title">
+              <FileText size={16} color="var(--primary-blue)" /> Rekaman Percakapan Tanya-Jawab
+            </h3>
+            <p>Ringkasan tiap pertanyaan. Buka detail untuk melihat jawaban dan umpan balik lengkap.</p>
+          </div>
+          <span>{groups.length} pertanyaan</span>
+        </div>
 
-                {groups.length === 0 ? (
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>Tidak ada rekaman percakapan dalam riwayat ini.</p>
-                ) : (
-                    <div className="transcript-list">
-                        {groups.map((group) => (
-                            <div key={group.id} className="transcript-item">
-                                <div className="transcript-item-head">
-                                    <div style={{ minWidth: 0 }}>
-                                        <p className="transcript-kicker" style={{ fontSize: '12px' }}>Pertanyaan {group.number}</p>
-                                        <p className="transcript-question">{previewText(group.question?.content, 190)}</p>
-                                    </div>
-                                    {typeof group.feedback?.score === 'number' && (
-                                        <span className="transcript-score">Skor {group.feedback.score}</span>
-                                    )}
-                                </div>
+        {groups.length === 0 ? (
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
+            Tidak ada rekaman percakapan dalam riwayat ini.
+          </p>
+        ) : (
+          <div className="transcript-list">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => setSelectedGroup(group)}
+                className="transcript-item"
+              >
+                <div className="transcript-item-head">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="transcript-kicker">Pertanyaan {group.number}</p>
+                    <p className="transcript-question">{previewText(group.question?.content, 155)}</p>
+                  </div>
 
-                                <button onClick={() => setSelectedGroup(group)} className="transcript-detail-btn" style={{ fontSize: '12px' }}>
-                                    Lihat detail lengkap
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                  {typeof group.feedback?.score === 'number' && (
+                    <span className="transcript-score">Skor {group.feedback.score}</span>
+                  )}
+                </div>
 
-            <DetailModal group={selectedGroup} onClose={() => setSelectedGroup(null)} />
-        </>
-    );
+                <div className="transcript-item-footer">
+                  <span>{previewText(group.answer?.content || 'Belum ada jawaban.', 90)}</span>
+                  <strong>Lihat detail</strong>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <DetailModal group={selectedGroup} onClose={() => setSelectedGroup(null)} />
+    </>
+  );
 }
 
 export default function EvaluationResultLayout({
-    title,
-    subtitle,
-    score,
-    summary,
-    strengths,
-    weaknesses,
-    nextPractice,
-    actions,
-    topAction,
-    badges,
-    metadata,
-    transcript,
-    showTranscript = false,
+  title,
+  subtitle,
+  score,
+  summary,
+  strengths,
+  weaknesses,
+  nextPractice,
+  actions,
+  topAction,
+  badges,
+  metadata,
+  transcript,
+  showTranscript = false,
 }: EvaluationResultLayoutProps) {
-    const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
-    const safeStrengths = safeList(strengths, ['Penyelesaian sesi tepat waktu']);
-    const safeWeaknesses = safeList(weaknesses, ['Perlu memperjelas jawaban pada beberapa bagian']);
-    const safeNextPractice = safeList(nextPractice, ['Coba mode penguji lain']);
-    const visibleMetadata = (metadata || []).filter((item) => item.value !== undefined && item.value !== null && String(item.value).trim() !== '');
+  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
+  const tone = scoreTone(safeScore);
+  const safeStrengths = safeList(strengths, ['Penyelesaian sesi tepat waktu']);
+  const safeWeaknesses = safeList(weaknesses, ['Perlu memperjelas jawaban pada beberapa bagian']);
+  const safeNextPractice = safeList(nextPractice, ['Coba mode penguji lain']);
+  const visibleMetadata = (metadata || []).filter(
+    (item) => item.value !== undefined && item.value !== null && String(item.value).trim() !== ''
+  );
 
-    return (
-        <div className="section-soft eval-page-shell">
-            <div className="container eval-container">
-                <div className="eval-topbar fade-up">
-                    <div>{topAction}</div>
-                    {badges && <div className="eval-badges">{badges}</div>}
-                </div>
+  return (
+    <div className="section-soft eval-page-shell">
+      <div className="container eval-container">
+        <div className="eval-topbar fade-up">
+          <div>{topAction}</div>
+          {badges && <div className="eval-badges">{badges}</div>}
+        </div>
 
-                <div className="fade-up eval-heading">
-                    <h1 className="section-title eval-title">{title}</h1>
-                    {subtitle && <p className="section-desc eval-subtitle">{subtitle}</p>}
-                </div>
+        <div className="fade-up eval-heading">
+          <h1 className="section-title eval-title">{title}</h1>
+          {subtitle && <p className="section-desc eval-subtitle">{subtitle}</p>}
+        </div>
 
-                <div className="eval-result-grid">
-                    <div className="eval-left-col">
-                        <div className="card fade-up delay-1 soft-shadow eval-score-card">
-                            <div className="eval-score-circle">
-                                <span>{safeScore}</span>
-                            </div>
-                            <h2>{scoreStatus(safeScore)}</h2>
-                            <p>{summary || 'Simulasi selesai.'}</p>
-                            {actions && <div className="eval-actions">{actions}</div>}
-                        </div>
+        <div className="eval-result-layout">
+          <aside className="eval-left-panel">
+            <div className="eval-card eval-score-card">
+              <div
+                className="eval-score-ring"
+                style={{
+                  backgroundColor: tone.bg,
+                  borderColor: tone.border,
+                  color: tone.color,
+                }}
+              >
+                <span>{safeScore}</span>
+              </div>
 
-                        {visibleMetadata.length > 0 && (
-                            <div className="card fade-up delay-2 soft-shadow eval-info-card">
-                                <h3>Info Simulasi</h3>
-                                <div className="eval-info-list">
-                                    {visibleMetadata.map((item) => (
-                                        <div key={item.label}>
-                                            <span>{item.label}: </span>
-                                            <strong>{item.value}</strong>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+              <div>
+                <h2>{scoreStatus(safeScore)}</h2>
+                <p>{previewText(summary || 'Simulasi selesai.', 360)}</p>
+              </div>
 
-                    <div className="eval-main-col">
-                        <div className="eval-mini-cards">
-                            <div className="card fade-up delay-3 eval-mini-card eval-mini-card-green">
-                                <h4><CheckCircle2 size={14} /> Kekuatan</h4>
-                                <ul>
-                                    {safeStrengths.map((item, index) => <li key={index}>{item}</li>)}
-                                </ul>
-                            </div>
-
-                            <div className="card fade-up delay-4 eval-mini-card eval-mini-card-orange">
-                                <h4><AlertCircle size={14} /> Area Perbaikan</h4>
-                                <ul>
-                                    {safeWeaknesses.map((item, index) => <li key={index}>{item}</li>)}
-                                </ul>
-                            </div>
-                        </div>
-
-                        <div className="card fade-up delay-2 soft-shadow eval-practice-card">
-                            <h3><Award size={16} color="var(--primary-blue)" /> Saran Latihan Selanjutnya</h3>
-                            <div className="eval-practice-list">
-                                {safeNextPractice.map((item, index) => (
-                                    <div key={index}>
-                                        <div />
-                                        <span>{item}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {showTranscript && <TranscriptPreview transcript={transcript} />}
-                    </div>
-                </div>
+              {actions && <div className="eval-actions">{actions}</div>}
             </div>
 
-            <style>{`
+            {visibleMetadata.length > 0 && (
+              <div className="eval-card eval-info-card">
+                <h3>Info Simulasi</h3>
+                <div className="eval-info-list">
+                  {visibleMetadata.map((item) => (
+                    <div key={item.label}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+
+          <main className="eval-main-panel">
+            <div className="eval-card eval-summary-card">
+              <div>
+                <span className="eval-section-kicker">Ringkasan Evaluasi</span>
+                <h3>Gambaran performa sesi</h3>
+              </div>
+              <p>{summary || 'Simulasi selesai.'}</p>
+            </div>
+
+            <div className="eval-list-grid">
+              <CompactListCard
+                title="Kekuatan"
+                icon={<CheckCircle2 size={15} />}
+                items={safeStrengths}
+                tone="green"
+              />
+
+              <CompactListCard
+                title="Area Perbaikan"
+                icon={<AlertCircle size={15} />}
+                items={safeWeaknesses}
+                tone="orange"
+              />
+
+              <CompactListCard
+                title="Saran Latihan"
+                icon={<Award size={15} />}
+                items={safeNextPractice}
+                tone="blue"
+              />
+            </div>
+
+            {showTranscript && <TranscriptPreview transcript={transcript} />}
+          </main>
+        </div>
+      </div>
+
+      <style>{`
         .eval-page-shell {
           min-height: calc(100vh - 73px);
           padding: 2rem 1rem 4rem;
-          background-color: #f8fafc;
+          background:
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.06), transparent 28rem),
+            #f8fafc;
         }
 
         .eval-container {
-          max-width: 1120px !important;
+          width: min(100%, 1240px) !important;
+          max-width: 1240px !important;
+          margin: 0 auto;
         }
 
         .eval-topbar {
@@ -307,7 +446,7 @@ export default function EvaluationResultLayout({
 
         .eval-heading {
           text-align: left;
-          margin-bottom: 1.5rem;
+          margin-bottom: 1.25rem;
         }
 
         .eval-title {
@@ -317,305 +456,385 @@ export default function EvaluationResultLayout({
 
         .eval-subtitle {
           margin: 0;
-          max-width: 760px;
+          max-width: 820px;
           font-size: 0.95rem;
         }
 
-        .eval-result-grid {
+        .eval-result-layout {
           display: grid;
-          grid-template-columns: minmax(260px, 0.9fr) minmax(0, 2fr);
+          grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
           gap: 1.25rem;
           align-items: start;
         }
 
-        .eval-left-col,
-        .eval-main-col {
+        .eval-left-panel {
           display: grid;
-          gap: 1.25rem;
-          align-content: start;
+          gap: 1rem;
+          position: sticky;
+          top: 92px;
+          align-self: start;
+        }
+
+        .eval-main-panel {
+          display: grid;
+          gap: 1rem;
+          min-width: 0;
+        }
+
+        .eval-card {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid var(--border-color);
+          border-radius: 22px;
+          box-shadow: 0 12px 36px rgba(15, 23, 42, 0.045);
         }
 
         .eval-score-card {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 1.75rem 1.4rem;
-          text-align: center;
-          border-radius: 24px;
-          border: 1px solid var(--border-color);
-          background-color: var(--white);
+          padding: 1.25rem;
+          display: grid;
+          gap: 1rem;
         }
 
-        .eval-score-circle {
-          width: 92px;
-          height: 92px;
+        .eval-score-ring {
+          width: 86px;
+          height: 86px;
           border-radius: 50%;
-          border: 7px solid var(--primary-blue);
+          border: 6px solid;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 0.9rem;
-          background-color: var(--blue-soft);
         }
 
-        .eval-score-circle span {
-          font-size: 2.45rem;
-          font-weight: 800;
-          color: var(--primary-blue);
+        .eval-score-ring span {
+          font-size: 2.25rem;
+          font-weight: 900;
           line-height: 1;
         }
 
         .eval-score-card h2 {
-          font-size: 1.25rem;
-          font-weight: 800;
-          margin-bottom: 0.45rem;
+          font-size: 1.15rem;
+          font-weight: 900;
+          margin: 0 0 0.4rem;
+          color: var(--text-primary);
         }
 
         .eval-score-card p {
           color: var(--text-secondary);
-          font-size: 0.875rem;
+          font-size: 0.86rem;
           margin: 0;
           line-height: 1.55;
         }
 
         .eval-actions {
-          display: flex;
+          display: grid;
           gap: 0.5rem;
           width: 100%;
-          flex-direction: column;
-          margin-top: 1.25rem;
         }
 
         .eval-info-card {
-          padding: 1.25rem;
-          border-radius: 24px;
-          border: 1px solid var(--border-color);
-          background-color: var(--white);
+          padding: 1.1rem;
         }
 
         .eval-info-card h3 {
-          font-size: 1rem;
-          font-weight: 800;
+          font-size: 0.92rem;
+          font-weight: 900;
           margin-bottom: 0.85rem;
           color: var(--text-primary);
         }
 
         .eval-info-list {
           display: grid;
-          gap: 0.65rem;
+          gap: 0.55rem;
         }
 
         .eval-info-list div {
-          font-size: 0.875rem;
-          line-height: 1.5;
+          display: grid;
+          gap: 0.15rem;
+          padding-bottom: 0.55rem;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .eval-info-list div:last-child {
+          border-bottom: 0;
+          padding-bottom: 0;
         }
 
         .eval-info-list span {
-          color: var(--text-secondary);
+          color: var(--text-muted);
+          font-size: 0.72rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
         }
 
         .eval-info-list strong {
           color: var(--text-primary);
+          font-size: 0.86rem;
+          line-height: 1.45;
         }
 
-        .eval-mini-cards {
+        .eval-summary-card {
+          padding: 1.25rem 1.35rem;
+        }
+
+        .eval-section-kicker {
+          color: var(--primary-blue);
+          font-size: 0.72rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .eval-summary-card h3 {
+          margin: 0.2rem 0 0.65rem;
+          color: var(--text-primary);
+          font-size: 1.05rem;
+          font-weight: 900;
+        }
+
+        .eval-summary-card p {
+          margin: 0;
+          color: var(--text-secondary);
+          line-height: 1.7;
+          font-size: 0.92rem;
+        }
+
+        .eval-list-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 1.25rem;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1rem;
+          align-items: stretch;
         }
 
-        .eval-mini-card {
-          padding: 1.15rem;
-          border-radius: 24px;
-          border-left: 1px solid var(--border-color);
-          border-right: 1px solid var(--border-color);
-          border-bottom: 1px solid var(--border-color);
-          background-color: var(--white);
+        .eval-list-card {
+          padding: 1rem;
+          max-height: 365px;
+          min-height: 0;
+          height: auto;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
-        .eval-mini-card-green {
+        .eval-list-green {
           border-top: 4px solid #16a34a;
         }
 
-        .eval-mini-card-orange {
+        .eval-list-orange {
           border-top: 4px solid #ea580c;
         }
 
-        .eval-mini-card h4 {
-          font-weight: 800;
+        .eval-list-blue {
+          border-top: 4px solid var(--primary-blue);
+        }
+
+        .eval-list-head {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
-          margin-bottom: 0.6rem;
-          font-size: 0.95rem;
+          justify-content: space-between;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
+          flex-shrink: 0;
         }
 
-        .eval-mini-card-green h4 {
-          color: #16a34a;
-        }
-
-        .eval-mini-card-orange h4 {
-          color: #ea580c;
-        }
-
-        .eval-mini-card ul {
-          padding-left: 1.1rem;
-          color: var(--text-secondary);
-          font-size: 0.875rem;
-          display: flex;
-          flex-direction: column;
-          gap: 0.3rem;
+        .eval-list-head h4 {
+          font-size: 0.9rem;
+          font-weight: 900;
+          color: var(--text-primary);
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
           margin: 0;
-          line-height: 1.6;
         }
 
-        .eval-practice-card,
+        .eval-list-green h4 {
+          color: #15803d;
+        }
+
+        .eval-list-orange h4 {
+          color: #c2410c;
+        }
+
+        .eval-list-blue h4 {
+          color: var(--primary-blue);
+        }
+
+        .eval-list-count {
+          border: 0;
+          background: #f8fafc;
+          color: var(--text-secondary);
+          border-radius: 999px;
+          font-size: 0.7rem;
+          font-weight: 800;
+          padding: 0.35rem 0.6rem;
+          white-space: nowrap;
+        }
+
+        .eval-list-body {
+          position: relative;
+          flex: 1;
+          min-height: 0;
+          overflow: hidden;
+        }
+
+        .eval-list-scroll {
+          max-height: 292px;
+          overflow-y: auto;
+          padding-right: 0.35rem;
+          padding-bottom: 0.25rem;
+        }
+
+        .eval-list-scroll ul {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: grid;
+          gap: 0.7rem;
+        }
+
+        .eval-list-scroll li {
+          display: flex;
+          gap: 0.55rem;
+          align-items: flex-start;
+          color: var(--text-secondary);
+          font-size: 0.86rem;
+          line-height: 1.58;
+        }
+
+        .eval-list-scroll li span {
+          width: 22px;
+          height: 22px;
+          border-radius: 999px;
+          background: #f8fafc;
+          color: var(--text-muted);
+          font-size: 0.7rem;
+          font-weight: 900;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 0.05rem;
+        }
+
+        .eval-list-scroll li p {
+          margin: 0;
+        }
+
         .transcript-card {
-          padding: 1.25rem;
-          border-radius: 24px;
-          border: 1px solid var(--border-color);
-          background-color: var(--white);
+          padding: 1.15rem;
         }
 
-        .eval-practice-card h3,
+        .transcript-title-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          align-items: flex-start;
+          margin-bottom: 0.9rem;
+        }
+
         .transcript-title {
           font-size: 1rem;
-          font-weight: 800;
-          margin-bottom: 0.9rem;
+          font-weight: 900;
+          margin: 0 0 0.2rem;
           display: flex;
           align-items: center;
           gap: 0.45rem;
           color: var(--text-primary);
         }
 
-        .eval-practice-list {
-          display: grid;
-          gap: 0.55rem;
+        .transcript-title-row p {
+          margin: 0;
+          color: var(--text-muted);
+          font-size: 0.82rem;
+          line-height: 1.45;
         }
 
-        .eval-practice-list > div {
-          display: flex;
-          align-items: center;
-          gap: 0.6rem;
-          background-color: var(--bg-soft);
-          padding: 0.65rem 0.85rem;
-          border-radius: 10px;
-        }
-
-        .eval-practice-list > div > div {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background-color: var(--primary-blue);
+        .transcript-title-row > span {
           flex-shrink: 0;
-        }
-
-        .eval-practice-list span {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          line-height: 1.5;
+          background: var(--blue-soft);
+          color: var(--primary-blue);
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 900;
+          padding: 0.35rem 0.65rem;
         }
 
         .transcript-list {
           display: grid;
-          gap: 1rem;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.8rem;
         }
 
         .transcript-item {
           border: 1px solid var(--border-color);
-          border-radius: 20px;
+          border-radius: 18px;
           background-color: #ffffff;
           overflow: hidden;
+          text-align: left;
+          cursor: pointer;
+          padding: 0;
+          transition: all 0.18s ease;
+        }
+
+        .transcript-item:hover {
+          transform: translateY(-2px);
+          border-color: #bfdbfe;
+          box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
         }
 
         .transcript-item-head {
-          padding: 1rem 1.1rem;
+          padding: 0.9rem 1rem;
           background-color: #f8fafc;
           border-bottom: 1px solid var(--border-color);
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 0.85rem;
+          gap: 0.75rem;
         }
 
         .transcript-kicker {
-          font-size: 0.72rem;
-          font-weight: 800;
+          font-size: 0.7rem;
+          font-weight: 900;
           color: var(--primary-blue);
-          margin-bottom: 0.25rem;
+          margin: 0 0 0.25rem;
         }
 
         .transcript-question {
           margin: 0;
-          font-size: 0.9rem;
+          font-size: 0.84rem;
           color: var(--text-primary);
-          line-height: 1.5;
+          line-height: 1.45;
         }
 
         .transcript-score {
           flex-shrink: 0;
-          font-size: 0.75rem;
-          font-weight: 800;
+          font-size: 0.7rem;
+          font-weight: 900;
           color: var(--primary-blue);
           background-color: var(--blue-soft);
           border-radius: 999px;
-          padding: 0.35rem 0.65rem;
+          padding: 0.3rem 0.55rem;
         }
 
-        .transcript-mini-grid {
-          padding: 1rem 1.1rem 0;
-          display: grid;
+        .transcript-item-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           gap: 0.75rem;
+          padding: 0.75rem 1rem;
         }
 
-        .transcript-mini {
-          border-radius: 16px;
-          padding: 0.85rem 0.95rem;
+        .transcript-item-footer span {
+          min-width: 0;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          line-height: 1.4;
         }
 
-        .transcript-mini span {
-          font-size: 0.68rem;
-          font-weight: 800;
-          text-transform: uppercase;
-        }
-
-        .transcript-mini p {
-          margin: 0.28rem 0 0;
-          font-size: 0.86rem;
-          line-height: 1.55;
-        }
-
-        .transcript-mini-blue {
-          background-color: #eff6ff;
-          border: 1px solid #bfdbfe;
-        }
-
-        .transcript-mini-blue span,
-        .transcript-mini-blue p {
-          color: #1e3a8a;
-        }
-
-        .transcript-mini-green {
-          background-color: #f0fdf4;
-          border: 1px solid #bbf7d0;
-        }
-
-        .transcript-mini-green span,
-        .transcript-mini-green p {
-          color: #166534;
-        }
-
-        .transcript-detail-btn {
-          margin: 0.75rem 1.1rem 1rem;
-          border: none;
-          background: transparent;
+        .transcript-item-footer strong {
           color: var(--primary-blue);
-          font-size: 0.82rem;
-          font-weight: 800;
-          cursor: pointer;
-          padding: 0;
+          font-size: 0.75rem;
+          font-weight: 900;
+          flex-shrink: 0;
         }
 
         .eval-detail-overlay {
@@ -631,7 +850,7 @@ export default function EvaluationResultLayout({
         }
 
         .eval-detail-modal {
-          width: min(820px, calc(100vw - 2rem));
+          width: min(860px, calc(100vw - 2rem));
           max-height: min(86vh, 820px);
           background-color: var(--white);
           border-radius: 24px;
@@ -653,15 +872,16 @@ export default function EvaluationResultLayout({
 
         .eval-detail-kicker {
           font-size: 0.75rem;
-          font-weight: 800;
+          font-weight: 900;
           color: var(--primary-blue);
-          margin-bottom: 0.25rem;
+          margin: 0 0 0.25rem;
         }
 
         .eval-detail-title {
           font-size: 1.125rem;
-          font-weight: 800;
+          font-weight: 900;
           color: var(--text-primary);
+          margin: 0;
         }
 
         .eval-detail-close {
@@ -684,13 +904,32 @@ export default function EvaluationResultLayout({
           gap: 1rem;
         }
 
-        @media (max-width: 900px) {
-          .eval-result-grid {
+        @media (max-width: 1100px) {
+          .eval-list-grid {
             grid-template-columns: 1fr;
           }
 
-          .eval-mini-cards {
+          .transcript-list {
             grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .eval-result-layout {
+            grid-template-columns: 1fr;
+          }
+
+          .eval-left-panel {
+            position: static;
+          }
+
+          .eval-score-card {
+            grid-template-columns: auto 1fr;
+            align-items: center;
+          }
+
+          .eval-actions {
+            grid-column: 1 / -1;
           }
 
           .eval-topbar {
@@ -708,12 +947,25 @@ export default function EvaluationResultLayout({
             padding: 1rem 0.75rem 2.5rem;
           }
 
-          .eval-score-card,
-          .eval-info-card,
-          .eval-practice-card,
-          .transcript-card,
-          .eval-mini-card {
+          .eval-card {
             border-radius: 18px;
+          }
+
+          .eval-score-card {
+            grid-template-columns: 1fr;
+          }
+
+          .eval-score-ring {
+            width: 76px;
+            height: 76px;
+          }
+
+          .eval-score-ring span {
+            font-size: 2rem;
+          }
+
+          .transcript-title-row {
+            flex-direction: column;
           }
 
           .eval-detail-modal {
@@ -722,12 +974,22 @@ export default function EvaluationResultLayout({
             border-radius: 20px;
           }
 
+          .eval-list-card {
+            max-height: 320px;
+            height: auto;
+            min-height: 0;
+          }
+
+          .eval-list-scroll {
+            max-height: 250px;
+          }
+
           .eval-detail-header,
           .eval-detail-body {
             padding: 1rem;
           }
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

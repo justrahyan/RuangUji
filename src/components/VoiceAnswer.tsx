@@ -9,7 +9,7 @@ function cleanVoiceTranscript(text: string): string {
 
   const words = cleaned.split(' ');
   const result: string[] = [];
-  
+
   // Deteksi kata berulang > 2 kali berturut-turut
   for (let i = 0; i < words.length; i++) {
     const word = words[i].toLowerCase();
@@ -17,7 +17,7 @@ function cleanVoiceTranscript(text: string): string {
     for (let j = result.length - 1; j >= 0; j--) {
       if (result[j].toLowerCase() === word) {
         repeatCount++;
-        if (result.length - 1 - j !== repeatCount - 1) break; 
+        if (result.length - 1 - j !== repeatCount - 1) break;
       } else {
         break;
       }
@@ -26,12 +26,12 @@ function cleanVoiceTranscript(text: string): string {
       result.push(words[i]);
     }
   }
-  
+
   let finalStr = result.join(' ');
-  
+
   // Hapus kata filler berulang berlebihan (misal: "e", "em", "anu")
   finalStr = finalStr.replace(/\b(e|em|anu|kayak|terus|kayak)\b\s+\1\b/gi, '$1');
-  
+
   // Deteksi pengulangan frasa sederhana (3-10 kata berulang)
   try {
     const phraseRegex = /\b((?:\S+\s+){2,8}\S+)\s+\1\b/gi;
@@ -42,7 +42,7 @@ function cleanVoiceTranscript(text: string): string {
       phraseRegex.lastIndex = 0; // reset regex
       iterations++;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Batasi maksimal 1400 karakter (antara 1200 - 1600 karakter)
   if (finalStr.length > 1400) {
@@ -76,22 +76,22 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
     finalTranscriptRef.current = val;
     _setFinalTranscript(val);
   };
-  
+
   const [manualMode, setManualMode] = useState(false);
   const [manualText, setManualText] = useState('');
   const [browserSupported, setBrowserSupported] = useState(true);
-  
+
   const [isSilencePending, setIsSilencePending] = useState(false);
   const [statusOverride, setStatusOverride] = useState('');
-  
+
   const recognitionRef = useRef<any>(null);
   const silenceTimeoutRef = useRef<any>(null);
-  
+
   // Guard untuk mencegah submit berkali-kali
   const isSubmittingRef = useRef(false);
   const lastSubmittedTextRef = useRef('');
   const isListeningRef = useRef(false);
-  
+
   // Ref untuk mendeteksi durasi suara
   const speechStartRef = useRef<number | null>(null);
 
@@ -131,21 +131,21 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
           interim += event.results[i][0].transcript;
         }
       }
-      
+
       setInterimTranscript(interim);
-      
+
       // Catat kapan user mulai berbicara
       if ((finalStr || interim) && speechStartRef.current === null) {
         speechStartRef.current = Date.now();
       }
-      
+
       if (finalStr) {
         setFinalTranscript(cleanVoiceTranscript(finalStr));
       }
-      
+
       // Silence detection logic: ~2200ms setelah user selesai berbicara
       if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-      
+
       if (!interim) {
         setIsSilencePending(true);
         silenceTimeoutRef.current = setTimeout(() => {
@@ -199,7 +199,7 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
         recognitionRef.current.onresult = null;
         try {
           recognitionRef.current.stop();
-        } catch (e) {}
+        } catch (e) { }
       }
       if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
     };
@@ -208,20 +208,20 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   const triggerSubmit = () => {
     if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
     const cleaned = cleanVoiceTranscript(finalTranscriptRef.current);
-    
+
     // Jika kosong atau terlalu pendek (kurang dari 15 karakter), jangan kirim
     if (cleaned.length < 15) {
       setStatusOverride("Jawaban belum terdengar jelas, coba ulangi.");
       setTimeout(() => {
         setStatusOverride("");
       }, 3000);
-      
+
       setInterimTranscript('');
       speechStartRef.current = null;
       setIsSilencePending(false);
       return;
     }
-    
+
     // Verifikasi durasi berbicara minimal 1200ms
     const speechDuration = speechStartRef.current ? (Date.now() - speechStartRef.current) : 0;
     if (speechDuration < 1200) {
@@ -230,13 +230,13 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       setTimeout(() => {
         setStatusOverride("");
       }, 3000);
-      
+
       setInterimTranscript('');
       speechStartRef.current = null;
       setIsSilencePending(false);
       return;
     }
-    
+
     // Cek dedupe submit
     if (cleaned === lastSubmittedTextRef.current) return;
     if (isSubmittingRef.current) return;
@@ -247,9 +247,9 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
     }
-    
+
     setTimeout(() => {
       setIsListening(false);
       setIsSilencePending(false);
@@ -264,11 +264,11 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch (e) {}
+        } catch (e) { }
       }
       setIsListening(false);
       setIsSilencePending(false);
-      
+
       if (finalTranscript.trim()) {
         triggerSubmit();
       }
@@ -280,7 +280,7 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       speechStartRef.current = null;
       setIsSilencePending(false);
       setStatusOverride('');
-      
+
       try {
         recognitionRef.current.start();
         setIsListening(true);
@@ -301,10 +301,10 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
     if (manualMode) {
       return (
         <div className="card fade-up soft-shadow" style={{ padding: '1rem', width: '100%', margin: '0 auto' }}>
-          <textarea 
-            className="textarea custom-scrollbar" 
-            rows={3} 
-            placeholder="Ketik jawaban Anda di sini..." 
+          <textarea
+            className="textarea custom-scrollbar"
+            rows={3}
+            placeholder="Ketik jawaban Anda di sini..."
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
             disabled={disabled || isThinking}
@@ -388,12 +388,6 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
       ) : (
         <button className="btn btn-primary" onClick={toggleListening} disabled={disabled || isThinking} style={{ padding: '0.75rem 2rem', fontSize: '1rem', borderRadius: '999px', boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)', transition: 'all 0.3s' }}>
           <Mic size={18} /> Mulai Berbicara
-        </button>
-      )}
-
-      {!isListening && (
-        <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', textDecoration: 'underline' }}>
-          <Type size={12} /> Gunakan Teks
         </button>
       )}
     </div>

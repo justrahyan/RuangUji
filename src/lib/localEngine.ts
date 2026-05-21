@@ -323,33 +323,20 @@ export function evaluateAnswer(
   const a = normalizeForCompare(answer);
   const rawAnswer = String(answer || "").trim();
 
-  const refusalPatterns = [
-    /\bgatau\b/i,
-    /\bga tau\b/i,
-    /\bgak tau\b/i,
-    /\bnggak tau\b/i,
-    /\btidak tahu\b/i,
-    /\btdk tahu\b/i,
-    /\bndak tau\b/i,
-    /\bndak tahu\b/i,
-    /\bndbisa\b/i,
-    /\btidak bisa\b/i,
-    /\bgabisa\b/i,
-    /\bga bisa\b/i,
-    /\bbingung\b/i,
-    /\bskip\b/i,
-    /\bmales\b/i,
-    /\bmalas\b/i,
-    /\bgamau\b/i,
-    /\bga mau\b/i,
-    /\btidak mau\b/i,
-    /\bentahlah\b/i,
-    /\bkurang tahu\b/i,
-    /\bkurang tau\b/i
+  const directRefusalPatterns = [
+    /\b(gatau|ga tau|gak tau|nggak tau|tidak tahu|tdk tahu|ndak tau|ndak tahu)\b/i,
+    /\b(saya tidak tahu|saya kurang tahu|saya belum tahu|belum paham|kurang paham)\b/i,
+    /\b(skip|pass|lewati|entahlah)\b/i,
+    /\b(males|malas|gamau|ga mau|tidak mau)\b/i,
+    /\b(kok tanya saya|tanya saya|mana saya tahu)\b/i,
   ];
 
   const questionSimilarity = jaccardSimilarity(q, a);
   const answerTokenCount = tokenize(a).length;
+
+  const isDirectRefusal =
+    answerTokenCount <= 18 &&
+    directRefusalPatterns.some((pattern) => pattern.test(rawAnswer));
 
   if (!rawAnswer || answerTokenCount === 0) {
     return {
@@ -360,7 +347,7 @@ export function evaluateAnswer(
     };
   }
 
-  if (refusalPatterns.some((pattern) => pattern.test(rawAnswer))) {
+  if (isDirectRefusal) {
     return {
       score: 10,
       strengths: ["Belum terlihat kekuatan akademik dari jawaban ini."],

@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Volume2, VolumeX, Bot, Mic, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText, Loader2 } from 'lucide-react';
+import { ArrowLeft, Volume2, VolumeX, Bot, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText, Loader2 } from 'lucide-react';
 import type { DefenseSession, TranscriptItem } from '../types';
 import { getActiveSession, clearActiveSession, saveActiveSession, saveHistoryItem, getInMemoryDocumentText } from '../lib/storage';
 import { evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
 import { speakText, stopSpeaking, handleMuteToggle } from '../lib/speech';
 
-import VoiceOrb from '../components/VoiceOrb';
 import VoiceAnswer from '../components/VoiceAnswer';
 import ConfirmModal from '../components/ConfirmModal';
 import SessionTranscript from '../components/SessionTranscript';
 import TextDetailModal from '../components/TextDetailModal';
+import RuangUjiBot from '../components/RuangUjiBot';
+import logoRuangUji from '../assets/logo-ruanguji.png';
 
 function normalizeFeedback(evaluation: any) {
   let score = Number(evaluation.score);
@@ -51,12 +52,18 @@ function normalizeFeedback(evaluation: any) {
       ? evaluation.speechText.trim()
       : '';
 
+  const normalizedAnswer =
+    typeof evaluation.normalizedAnswer === 'string' && evaluation.normalizedAnswer.trim()
+      ? evaluation.normalizedAnswer.trim()
+      : '';
+
   return {
     score,
     strengths,
     weaknesses,
     suggestion,
     speechText,
+    normalizedAnswer,
     answerCategory: evaluation.answerCategory || ''
   };
 }
@@ -81,8 +88,6 @@ export default function DefenseRoomPage() {
   const [hasFeedback, setHasFeedback] = useState(false);
 
   const [chatInput, setChatInput] = useState('');
-  const [isDictating, setIsDictating] = useState(false);
-  const dictationRef = useRef<any>(null);
 
   const [showBackModal, setShowBackModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -154,7 +159,6 @@ export default function DefenseRoomPage() {
   useEffect(() => {
     return () => {
       stopSpeaking();
-      if (dictationRef.current) dictationRef.current.stop();
     };
   }, []);
 
@@ -385,7 +389,6 @@ export default function DefenseRoomPage() {
     setSpokenMode('feedback');
     setSpokenText('Menganalisis jawaban...');
     setChatInput('');
-    if (isDictating) toggleDictation();
 
     const activeAnswerQuestionId = currentQuestion.id;
     const activeAnswerQuestionText = currentQuestion.text;
@@ -452,6 +455,7 @@ export default function DefenseRoomPage() {
       questionId: activeAnswerQuestionId,
       questionText: activeAnswerQuestionText,
       answerText: activeAnswerText,
+      normalizedAnswer: normEval.normalizedAnswer,
       feedback: feedbackText,
       speechText: feedbackSpeechText,
       score: normEval.score,
@@ -609,41 +613,6 @@ export default function DefenseRoomPage() {
     }
   };
 
-  const toggleDictation = () => {
-    if (isDictating) {
-      if (dictationRef.current) dictationRef.current.stop();
-      setIsDictating(false);
-    } else {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Browser tidak mendukung speech-to-text. Silakan gunakan Chrome.");
-        return;
-      }
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'id-ID';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-
-      recognition.onresult = (e: any) => {
-        const text = e.results[0][0].transcript;
-        setChatInput(prev => {
-          const newText = prev ? prev + ' ' + text : text;
-          if (newText.trim().length > 0) {
-            hasUserAnsweredRef.current = true;
-          }
-          return newText;
-        });
-      };
-
-      recognition.onend = () => setIsDictating(false);
-      recognition.onerror = () => setIsDictating(false);
-
-      dictationRef.current = recognition;
-      recognition.start();
-      setIsDictating(true);
-    }
-  };
-
   if (!session) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
@@ -673,6 +642,9 @@ export default function DefenseRoomPage() {
   const finishingTitle = 'Menyusun Evaluasi Akhir';
   const finishingMessage =
     'Mohon tunggu sebentar. RuangUji sedang menyimpan transkrip, menghitung skor akhir, dan menyiapkan halaman evaluasi.';
+
+  const aiDisclaimerMessage =
+    'AI dapat membuat kesalahan atau kurang sesuai konteks. Gunakan hasil simulasi sebagai bahan latihan, bukan penilaian final.';
 
   return (
     <div
@@ -708,7 +680,12 @@ export default function DefenseRoomPage() {
             <div className="defense-brand-separator"></div>
 
             <div className="defense-brand">
-              RuangUji
+              <img
+                src={logoRuangUji}
+                alt="Logo RuangUji"
+                className="defense-brand-logo"
+              />
+              <span>RuangUji</span>
             </div>
           </div>
 
@@ -945,11 +922,65 @@ export default function DefenseRoomPage() {
           </div>
 
           <div ref={middleScrollRef} className="custom-scrollbar defense-center-scroll" style={{ flex: 1, overflowY: 'auto', padding: isVoiceMode ? '0' : '24px', display: 'flex', flexDirection: 'column', alignItems: isVoiceMode ? 'center' : 'stretch', gap: isVoiceMode ? '0' : '20px', scrollBehavior: 'smooth' }}>
+            {!isVoiceMode && (
+              <div
+                className="fade-up"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.65rem',
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: '16px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.5,
+                  marginBottom: '0.25rem',
+                }}
+              >
+                <Info
+                  size={15}
+                  style={{
+                    color: 'var(--primary-blue)',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                />
+                <span>{aiDisclaimerMessage}</span>
+              </div>
+            )}
 
             {isVoiceMode ? (
               // VOICE STAGE UI
               <div className="fade-up voice-stage-container" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '16px' }}>
-
+                <div
+                  style={{
+                    width: '92%',
+                    maxWidth: '78%',
+                    margin: '14px auto 0',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.5rem',
+                    padding: '0.65rem 0.8rem',
+                    borderRadius: '14px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.74rem',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <Info
+                    size={14}
+                    style={{
+                      color: 'var(--primary-blue)',
+                      flexShrink: 0,
+                      marginTop: '2px',
+                    }}
+                  />
+                  <span>{aiDisclaimerMessage}</span>
+                </div>
                 {isGeneratingQuestion ? (
                   <div className="voice-question-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #cbd5e1', borderTopColor: 'var(--primary-blue)', animation: 'spin 0.8s linear infinite' }}></div>
@@ -987,7 +1018,7 @@ export default function DefenseRoomPage() {
                 ) : null}
 
                 <div className="voice-blob-wrapper" style={{ margin: '48px 0 22px 0', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                  <VoiceOrb state={orbState} label="" />
+                  <RuangUjiBot state={orbState} size={window.innerWidth < 520 ? 180 : 230} />
                 </div>
 
               </div>
@@ -1147,28 +1178,22 @@ export default function DefenseRoomPage() {
 
             {isVoiceMode ? (
               // VOICE MODE CONTROLS
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <button onClick={() => setIsVoiceMode(false)} disabled={isGeneratingQuestion || isEvaluatingAnswer} className="btn btn-secondary" style={{ padding: '0.625rem 1rem', borderRadius: '999px', fontSize: '0.875rem' }}>
+              <div className="defense-action-row">
+                <button
+                  onClick={() => setIsVoiceMode(false)}
+                  disabled={isGeneratingQuestion || isEvaluatingAnswer}
+                  className="btn btn-secondary defense-mode-btn"
+                >
                   Kembali ke Chat
                 </button>
 
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={toggleVoice} className="btn btn-secondary" style={{ padding: '0.625rem', borderRadius: '50%' }} title={voiceEnabled ? 'Matikan Suara AI' : 'Aktifkan Suara AI'}>
-                    {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                  </button>
-                </div>
-
-                <div>
+                <div className="defense-action-right">
                   {hasFeedback ? (
                     <button
-                      className="btn btn-primary fade-up"
+                      className="btn btn-primary fade-up defense-next-btn"
                       onClick={handleNextQuestion}
                       disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
                       style={{
-                        padding: '0.625rem 1.5rem',
-                        fontSize: '0.875rem',
-                        borderRadius: '999px',
-                        boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)',
                         opacity: isFinishingSession ? 0.75 : 1,
                         cursor: isFinishingSession ? 'wait' : 'pointer',
                       }}
@@ -1180,14 +1205,28 @@ export default function DefenseRoomPage() {
                           : 'Pertanyaan Berikutnya'}
                     </button>
                   ) : (
-                    <VoiceAnswer
-                      key={currentQuestionIndex}
-                      onSubmit={handleAnswerSubmit}
-                      disabled={orbState !== 'idle' && orbState !== 'listening'}
-                      isThinking={orbState === 'thinking'}
-                      autoMode={true}
-                    />
+                    <div className="voice-answer-compact">
+                      <VoiceAnswer
+                        key={currentQuestionIndex}
+                        onSubmit={handleAnswerSubmit}
+                        disabled={orbState !== 'idle' && orbState !== 'listening'}
+                        isThinking={orbState === 'thinking'}
+                        autoMode={true}
+                      />
+                    </div>
                   )}
+
+                  <button
+                    onClick={toggleVoice}
+                    className="defense-circle-btn"
+                    title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
+                    style={{
+                      backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
+                      color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                  </button>
                 </div>
               </div>
             ) : (
@@ -1229,44 +1268,35 @@ export default function DefenseRoomPage() {
                     <button
                       onClick={() => handleAnswerSubmit(chatInput)}
                       disabled={hasFeedback || orbState === 'thinking' || isGeneratingQuestion || isEvaluatingAnswer}
-                      style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary-blue)', color: 'var(--white)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}
+                      className="defense-circle-btn defense-send-btn"
+                      title="Kirim jawaban"
                     >
                       <Send size={16} style={{ marginLeft: '2px' }} />
                     </button>
                   ) : (
                     <button
-                      onClick={toggleDictation}
-                      disabled={hasFeedback || orbState === 'thinking' || isGeneratingQuestion || isEvaluatingAnswer}
-                      style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: isDictating ? '#ef4444' : 'var(--white)', color: isDictating ? 'var(--white)' : 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
-                      title="Speech to Text"
+                      onClick={() => setIsVoiceMode(true)}
+                      disabled={isGeneratingQuestion || isEvaluatingAnswer}
+                      className="defense-circle-btn"
+                      title="Masuk Voice Stage"
+                      style={{
+                        backgroundColor: 'var(--blue-soft)',
+                        color: 'var(--primary-blue)',
+                        border: 'none',
+                      }}
                     >
-                      <Mic size={16} />
+                      <Speech size={16} />
                     </button>
                   )}
-                  <button
-                    onClick={() => setIsVoiceMode(true)}
-                    disabled={isGeneratingQuestion || isEvaluatingAnswer}
-                    style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--blue-soft)', color: 'var(--primary-blue)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
-                    title="Masuk Voice Stage"
-                  >
-                    <Speech size={16} />
-                  </button>
+
                   <button
                     onClick={toggleVoice}
+                    className="defense-circle-btn"
+                    title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
                     style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
                       backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
                       color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
-                      border: '1px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
                     }}
-                    title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
                   >
                     {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                   </button>
@@ -1489,8 +1519,23 @@ export default function DefenseRoomPage() {
         }
 
         .defense-brand {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.55rem;
           font-weight: 800;
           color: var(--primary-blue);
+          min-width: 0;
+        }
+
+        .defense-brand-logo {
+          width: 30px;
+          height: 30px;
+          object-fit: contain;
+          display: block;
+          flex-shrink: 0;
+        }
+
+        .defense-brand span {
           white-space: nowrap;
         }
 
@@ -1526,6 +1571,86 @@ export default function DefenseRoomPage() {
           white-space: nowrap;
         }
 
+        .defense-action-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .defense-action-right {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 0.5rem;
+          min-width: 0;
+        }
+
+        .defense-mode-btn {
+          padding: 0.55rem 0.95rem !important;
+          border-radius: 999px !important;
+          font-size: 0.82rem !important;
+          white-space: nowrap;
+        }
+
+        .defense-next-btn {
+          padding: 0.55rem 1.15rem !important;
+          font-size: 0.82rem !important;
+          border-radius: 999px !important;
+          box-shadow: 0 4px 14px 0 rgba(37,99,235,0.32);
+          white-space: nowrap;
+        }
+
+        .defense-circle-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 999px;
+          border: 1px solid var(--border-color);
+          background-color: var(--white);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+
+        .defense-circle-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+        }
+
+        .defense-circle-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .defense-send-btn {
+          background-color: var(--primary-blue);
+          color: var(--white);
+          border: none;
+          box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+        }
+
+        .voice-answer-compact {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .voice-answer-compact button {
+          padding: 0.55rem 1.05rem !important;
+          min-height: 40px !important;
+          border-radius: 999px !important;
+          font-size: 0.82rem !important;
+          line-height: 1.1 !important;
+          gap: 0.4rem !important;
+        }
+
+        .voice-answer-compact svg {
+          width: 16px !important;
+          height: 16px !important;
+        }
+
         .defense-mobile-tabs {
           display: none;
         }
@@ -1556,11 +1681,26 @@ export default function DefenseRoomPage() {
             gap: 0.5rem;
           }
 
-          .defense-brand,
           .defense-brand-separator,
           .defense-back-text,
           .defense-desktop-only {
             display: none !important;
+          }
+
+          .defense-brand {
+            display: inline-flex !important;
+            align-items: center;
+            gap: 0;
+            flex-shrink: 0;
+          }
+
+          .defense-brand span {
+            display: none !important;
+          }
+
+          .defense-brand-logo {
+            width: 28px;
+            height: 28px;
           }
 
           .defense-back-btn {
@@ -1705,12 +1845,37 @@ export default function DefenseRoomPage() {
             padding-left: 18px !important;
             padding-right: 18px !important;
           }
+
+          .defense-action-row {
+            gap: 0.5rem;
+          }
+
+          .defense-mode-btn {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.78rem !important;
+          }
+
+          .defense-next-btn,
+          .voice-answer-compact button {
+            padding: 0.5rem 0.85rem !important;
+            font-size: 0.78rem !important;
+          }
+
+          .defense-circle-btn {
+            width: 34px;
+            height: 34px;
+          }
         }
 
         @media (max-width: 520px) {
           .defense-header {
             height: 72px;
             padding: 0 8px;
+          }
+
+          .defense-brand-logo {
+            width: 26px;
+            height: 26px;
           }
 
           .defense-header-title h1 {

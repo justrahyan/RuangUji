@@ -416,24 +416,51 @@ export default function HistoryPage() {
   const [modalConfig, setModalConfig] = useState<{
     title: string;
     message: string;
+    confirmText: string;
     onConfirm: () => void;
-  }>({ title: '', message: '', onConfirm: () => { } });
+  }>({
+    title: '',
+    message: '',
+    confirmText: 'Hapus',
+    onConfirm: () => { },
+  });
 
   useEffect(() => {
     setHistory(getHistory());
   }, []);
 
-  const handleDelete = (id: string) => {
-    deleteHistoryItem(id);
-    setHistory(getHistory());
-    setToastMessage('Riwayat berhasil dihapus.');
-    setToastOpen(true);
+  useEffect(() => {
+    if (selectedItem) {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    }
+  }, [selectedItem]);
+
+  const handleDelete = (item: HistoryItem) => {
+    setModalConfig({
+      title: 'Hapus riwayat ini?',
+      message: `Riwayat simulasi "${item.title}" akan dihapus dari perangkat ini. Tindakan ini tidak dapat dibatalkan.`,
+      confirmText: 'Hapus Riwayat',
+      onConfirm: () => {
+        deleteHistoryItem(item.id);
+        setHistory(getHistory());
+        setModalOpen(false);
+        setToastMessage('Riwayat berhasil dihapus.');
+        setToastOpen(true);
+      },
+    });
+
+    setModalOpen(true);
   };
 
   const handleClearAll = () => {
     setModalConfig({
       title: 'Hapus semua riwayat?',
       message: 'Tindakan ini akan menghapus seluruh data simulasi yang tersimpan di perangkat ini.',
+      confirmText: 'Hapus Semua',
       onConfirm: () => {
         clearHistory();
         setHistory([]);
@@ -442,6 +469,7 @@ export default function HistoryPage() {
         setToastOpen(true);
       },
     });
+
     setModalOpen(true);
   };
 
@@ -629,10 +657,17 @@ export default function HistoryPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(item.id);
+                            handleDelete(item);
                           }}
                           className="btn"
-                          style={{ backgroundColor: 'transparent', border: '1px solid #e2e8f0', color: '#94a3b8', padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer' }}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: '1px solid #e2e8f0',
+                            color: '#94a3b8',
+                            padding: '0.5rem',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer',
+                          }}
                           title="Hapus riwayat"
                         >
                           <Trash2 size={16} />
@@ -653,7 +688,7 @@ export default function HistoryPage() {
         onConfirm={modalConfig.onConfirm}
         title={modalConfig.title}
         message={modalConfig.message}
-        confirmText="Hapus Semua"
+        confirmText={modalConfig.confirmText}
         cancelText="Batal"
       />
 

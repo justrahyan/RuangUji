@@ -51,6 +51,7 @@ export interface TranscriptItem {
   answerText?: string;
   feedback?: string;
   speechText?: string;
+  normalizedAnswer?: string;
   score?: number;
   createdAt: string;
   timestamp?: string;
@@ -63,6 +64,7 @@ export interface AnswerEvaluation {
   suggestion: string;
   improvedAnswer?: string;
   speechText?: string;
+  normalizedAnswer?: string;
   answerCategory?: string;
 }
 

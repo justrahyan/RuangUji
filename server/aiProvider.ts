@@ -823,6 +823,9 @@ export async function evaluateDefenseAnswerAI(payload: any) {
       strengths: guarded.strengths,
       weaknesses: guarded.weaknesses,
       suggestion: guarded.suggestion,
+      answerCategory: guarded.answerCategory,
+      speechText: guarded.speechText,
+      normalizedAnswer: answer,
       provider: "rule-guard"
     };
   }
@@ -845,6 +848,19 @@ ${question}
 
 Jawaban mahasiswa:
 ${answer}
+
+CATATAN PENTING TENTANG JAWABAN VOICE / SPEECH-TO-TEXT:
+Jawaban mahasiswa dapat berasal dari speech-to-text dan mungkin mengandung salah transkripsi, terutama pada istilah akademik, singkatan, nama model, angka, atau istilah campuran Indonesia-Inggris.
+
+Sebelum memberi skor, rekonstruksi dulu maksud jawaban mahasiswa berdasarkan:
+1. pertanyaan penguji,
+2. konteks dokumen/penelitian,
+3. isi jawaban hasil transkripsi.
+
+Jangan langsung menghukum kesalahan kata jika makna akademiknya masih dapat dipahami dari konteks.
+Contoh: jika pertanyaan membahas "fine-grained" dan transkrip menulis "point green", pahami sebagai kemungkinan salah transkripsi dari "fine-grained".
+Contoh: jika jawaban memuat frasa "seseorang tidak bisa meminta bantuan secara verbal", itu BUKAN penolakan menjawab, melainkan konteks masalah penelitian.
+Kategori "refusal" hanya boleh dipakai jika mahasiswa benar-benar menolak menjawab, bercanda tanpa substansi, atau mengatakan tidak tahu tanpa penjelasan akademik.
 
 RUBRIK KATEGORI JAWABAN:
 Klasifikasikan jawaban mahasiswa ke salah satu answerCategory berikut:
@@ -875,6 +891,7 @@ ATURAN PENILAIAN:
 
 Output wajib JSON valid:
 {
+  "normalizedAnswer": "rekonstruksi maksud jawaban mahasiswa dalam bahasa Indonesia yang rapi, tanpa mengubah substansi",
   "answerCategory": "partial_relevant_informal",
   "score": 45,
   "strengths": ["..."],
@@ -900,6 +917,8 @@ Output wajib JSON valid:
     : [];
 
   const suggestion = safeText(result.suggestion, "Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan.");
+  const normalizedAnswer = safeSpeechText(result.normalizedAnswer, answer);
+
   const defaultSpeech = buildFallbackSpeechText(
     `Skor ${score}. ${suggestion}`
   );
@@ -907,6 +926,7 @@ Output wajib JSON valid:
   return {
     score,
     answerCategory,
+    normalizedAnswer,
     strengths: strengths.length ? strengths : ["Belum terlihat kekuatan yang signifikan dari jawaban ini."],
     weaknesses: weaknesses.length ? weaknesses : ["Tidak ada."],
     suggestion,

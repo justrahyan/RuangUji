@@ -1517,13 +1517,6 @@ h6 {
   font-weight: 850;
 }
 
-.lp-main-header strong {
-  display: block;
-  color: var(--text-primary);
-  font-size: 0.92rem;
-  font-weight: 900;
-}
-
 .lp-main-actions {
   display: flex;
   align-items: center;
@@ -1987,18 +1980,14 @@ h6 {
   color: var(--text-secondary);
 }
 
-.lp-transcript-list {
+.lp-transcript-scroll-shell {
   position: relative;
   flex: 1;
   min-height: 0;
-  padding: 0.85rem;
-  display: grid;
-  align-content: start;
-  gap: 0.68rem;
   overflow: hidden;
 }
 
-.lp-transcript-list::after {
+.lp-transcript-scroll-shell::after {
   content: "";
   position: absolute;
   left: 0;
@@ -2007,6 +1996,24 @@ h6 {
   height: 42px;
   pointer-events: none;
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #ffffff);
+  z-index: 2;
+}
+
+.lp-transcript-list {
+  height: 100%;
+  min-height: 0;
+  padding: 0.85rem;
+  display: grid;
+  align-content: start;
+  gap: 0.68rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.lp-transcript-list::-webkit-scrollbar {
+  display: none;
 }
 
 .lp-transcript-item {

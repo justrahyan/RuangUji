@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Bot,
-    FileText,
     MessageSquare,
     Send,
     Sparkles,
@@ -37,6 +36,7 @@ export default function LandingSimulatorPreview() {
 
     const botState = useMemo(() => getBotState(phase), [phase]);
     const chatScrollRef = useRef<HTMLDivElement | null>(null);
+    const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         let timer: number | undefined;
@@ -80,6 +80,16 @@ export default function LandingSimulatorPreview() {
 
     useEffect(() => {
         const el = chatScrollRef.current;
+        if (!el) return;
+
+        el.scrollTo({
+            top: el.scrollHeight,
+            behavior: 'smooth',
+        });
+    }, [phase, typedAnswer]);
+
+    useEffect(() => {
+        const el = transcriptScrollRef.current;
         if (!el) return;
 
         el.scrollTo({
@@ -138,8 +148,7 @@ export default function LandingSimulatorPreview() {
                         <main className="lp-simulator-main">
                             <div className="lp-main-header">
                                 <div>
-                                    <span>Panel Penguji</span>
-                                    <strong>Pertanyaan 1 dari 5</strong>
+                                    <span>Voice Stage</span>
                                 </div>
 
                                 <div className="lp-main-actions">
@@ -280,30 +289,31 @@ export default function LandingSimulatorPreview() {
                                 <div className="lp-transcript-head">
                                     <div>
                                         <span>Transkrip Sesi</span>
-                                        <p>Riwayat percakapan</p>
+                                        <p>Riwayat lengkap obrolan</p>
                                     </div>
-                                    <FileText size={15} />
                                 </div>
 
-                                <div className="lp-transcript-list">
-                                    <div className="lp-transcript-item neutral">
-                                        <span>Penguji</span>
-                                        <p>{demoQuestion}</p>
+                                <div className="lp-transcript-scroll-shell">
+                                    <div className="lp-transcript-list" ref={transcriptScrollRef}>
+                                        <div className="lp-transcript-item neutral">
+                                            <span>Penguji</span>
+                                            <p>{demoQuestion}</p>
+                                        </div>
+
+                                        {(phase === 'typing' || phase === 'thinking' || phase === 'feedback' || phase === 'next') && (
+                                            <div className="lp-transcript-item blue">
+                                                <span>Anda</span>
+                                                <p>{typedAnswer || 'Jawaban sedang diketik...'}</p>
+                                            </div>
+                                        )}
+
+                                        {(phase === 'feedback' || phase === 'next') && (
+                                            <div className="lp-transcript-item green">
+                                                <span>Umpan Balik</span>
+                                                <p>{demoFeedback}</p>
+                                            </div>
+                                        )}
                                     </div>
-
-                                    {(phase === 'typing' || phase === 'thinking' || phase === 'feedback' || phase === 'next') && (
-                                        <div className="lp-transcript-item blue">
-                                            <span>Anda</span>
-                                            <p>{typedAnswer || 'Jawaban sedang diketik...'}</p>
-                                        </div>
-                                    )}
-
-                                    {(phase === 'feedback' || phase === 'next') && (
-                                        <div className="lp-transcript-item green">
-                                            <span>Umpan Balik</span>
-                                            <p>{demoFeedback}</p>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 

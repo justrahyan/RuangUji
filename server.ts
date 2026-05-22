@@ -531,20 +531,29 @@ app.post('/api/ai/evaluate', async (req, res) => {
     return res.json({
       ...localEval,
       provider: 'local-fast-evaluation',
-      quotaMode: true,
-      reason: 'Evaluasi per jawaban menggunakan local engine untuk menghemat kuota Gemini.',
+      quotaMode: false,
+      apiSavingMode: true,
+      reason: 'Evaluasi cepat aktif untuk menghemat pemakaian Gemini.',
     });
   }
 
   try {
-    const data = await evaluateDefenseAnswerAI({
-      ...req.body,
+    const aiEval = await evaluateDefenseAnswerAI({
+      question: req.body.question,
+      answer: req.body.answer,
       research,
+      examinerMode: req.body.examinerMode,
     });
 
-    res.json(data);
-  } catch (error: any) {
-    console.error('AI Evaluate Error:', error.message);
+    return res.json({
+      ...aiEval,
+      provider: aiEval.provider || 'gemini',
+      quotaMode: false,
+      apiSavingMode: false,
+      reason: '',
+    });
+  } catch (error) {
+    console.error('[evaluate] Gemini evaluation failed, using local fallback:', error);
 
     const localEval = evaluateAnswer(
       req.body.question,
@@ -553,11 +562,12 @@ app.post('/api/ai/evaluate', async (req, res) => {
       req.body.examinerMode
     );
 
-    res.json({
+    return res.json({
       ...localEval,
-      provider: 'local-fallback',
+      provider: 'local-fallback-evaluation',
       quotaMode: true,
-      reason: `AI Provider Error: ${error.message}`,
+      apiSavingMode: true,
+      reason: 'Gemini sedang terbatas, evaluasi sementara dibuat dengan mode hemat API.',
     });
   }
 });

@@ -146,7 +146,7 @@ function normalizeSessionType(sessionType: string) {
 
 function getSessionTypeTemplateQuestions(
   research: ResearchProfile,
-  lead: string,
+  _lead: string,
   field: string,
   method: string,
   title: string,
@@ -159,126 +159,126 @@ function getSessionTypeTemplateQuestions(
     proposal: [
       {
         category: 'proposal_latar_belakang',
-        question: `${lead} mengapa topik "${title}" layak diajukan sebagai proposal penelitian pada konteks ${field}?`,
+        question: `Mengapa topik "${title}" layak diajukan sebagai proposal penelitian pada konteks ${field}?`,
       },
       {
         category: 'proposal_gap',
-        question: `${lead} gap atau celah penelitian apa yang ingin Anda isi melalui penelitian ini?`,
+        question: `Gap atau celah penelitian apa yang ingin Anda isi melalui penelitian ini?`,
       },
       {
         category: 'proposal_rumusan_masalah',
-        question: `${lead} bagaimana rumusan masalah dan tujuan penelitian Anda saling terhubung secara logis?`,
+        question: `Bagaimana rumusan masalah dan tujuan penelitian Anda saling terhubung secara logis?`,
       },
       {
         category: 'proposal_metode',
-        question: `${lead} mengapa ${method} sudah tepat untuk rencana penelitian ini, dan apa risiko metodologis yang perlu Anda antisipasi?`,
+        question: `Mengapa ${method} sudah tepat untuk rencana penelitian ini, dan apa risiko metodologis yang perlu Anda antisipasi?`,
       },
       {
         category: 'proposal_validasi',
-        question: `${lead} bagaimana rencana Anda memastikan data atau temuan yang nanti diperoleh dapat dipercaya?`,
+        question: `Bagaimana rencana Anda memastikan data atau temuan yang nanti diperoleh dapat dipercaya?`,
       },
     ],
 
     seminar_hasil: [
       {
         category: 'hasil_temuan',
-        question: `${lead} apa temuan utama dari penelitian "${title}" dan bagaimana temuan itu menjawab rumusan masalah?`,
+        question: `Apa temuan utama dari penelitian "${title}" dan bagaimana temuan itu menjawab rumusan masalah?`,
       },
       {
         category: 'hasil_pembahasan',
-        question: `${lead} bagaimana Anda menghubungkan hasil penelitian dengan teori atau penelitian terdahulu yang relevan?`,
+        question: `Bagaimana Anda menghubungkan hasil penelitian dengan teori atau penelitian terdahulu yang relevan?`,
       },
       {
         category: 'hasil_validitas',
-        question: `${lead} bukti apa yang paling kuat untuk menunjukkan bahwa hasil penelitian Anda dapat dipertanggungjawabkan?`,
+        question: `Bukti apa yang paling kuat untuk menunjukkan bahwa hasil penelitian Anda dapat dipertanggungjawabkan?`,
       },
       {
         category: 'hasil_keterbatasan',
-        question: `${lead} apa keterbatasan paling penting dari hasil penelitian ini, dan bagaimana dampaknya terhadap kesimpulan?`,
+        question: `Apa keterbatasan paling penting dari hasil penelitian ini, dan bagaimana dampaknya terhadap kesimpulan?`,
       },
       {
         category: 'hasil_implikasi',
-        question: `${lead} apa implikasi utama dari hasil penelitian Anda bagi konteks ${field}?`,
+        question: `Apa implikasi utama dari hasil penelitian Anda bagi konteks ${field}?`,
       },
     ],
 
     sidang_skripsi: [
       {
         category: 'skripsi_konsistensi',
-        question: `${lead} bagaimana Anda memastikan latar belakang, rumusan masalah, metode, dan hasil penelitian ini sudah saling konsisten?`,
+        question: `Bagaimana Anda memastikan latar belakang, rumusan masalah, metode, dan hasil penelitian ini sudah saling konsisten?`,
       },
       {
         category: 'skripsi_metode',
-        question: `${lead} mengapa ${method} menjadi pilihan yang paling dapat dipertanggungjawabkan dibanding alternatif lain?`,
+        question: `Mengapa ${method} menjadi pilihan yang paling dapat dipertanggungjawabkan dibanding alternatif lain?`,
       },
       {
         category: 'skripsi_validitas',
-        question: `${lead} bagian mana dari data atau hasil penelitian yang paling kuat mendukung kesimpulan Anda?`,
+        question: `Bagian mana dari data atau hasil penelitian yang paling kuat mendukung kesimpulan Anda?`,
       },
       {
         category: 'skripsi_kontribusi',
-        question: `${lead} apa kontribusi utama penelitian "${title}" bagi bidang ${field}?`,
+        question: `Apa kontribusi utama penelitian "${title}" bagi bidang ${field}?`,
       },
       {
         category: 'skripsi_pengembangan',
-        question: `${lead} jika penelitian ini dikembangkan lagi, bagian mana yang paling perlu diperbaiki atau diperluas?`,
+        question: `Jika penelitian ini dikembangkan lagi, bagian mana yang paling perlu diperbaiki atau diperluas?`,
       },
     ],
 
     presentasi_paper: [
       {
         category: 'paper_novelty',
-        question: `${lead} apa novelty atau kebaruan utama dari paper Anda dibanding penelitian sebelumnya?`,
+        question: `Apa novelty atau kebaruan utama dari paper Anda dibanding penelitian sebelumnya?`,
       },
       {
         category: 'paper_gap',
-        question: `${lead} gap penelitian apa yang paling jelas dijawab oleh paper ini?`,
+        question: `Gap penelitian apa yang paling jelas dijawab oleh paper ini?`,
       },
       {
         category: 'paper_kontribusi',
-        question: `${lead} apa kontribusi ilmiah paling kuat dari penelitian ini, bukan hanya kontribusi praktisnya?`,
+        question: `Apa kontribusi ilmiah paling kuat dari penelitian ini, bukan hanya kontribusi praktisnya?`,
       },
       {
         category: 'paper_pembanding',
-        question: `${lead} bagaimana posisi pendekatan Anda dibanding metode atau studi terdahulu yang relevan?`,
+        question: `Bagaimana posisi pendekatan Anda dibanding metode atau studi terdahulu yang relevan?`,
       },
       {
         category: 'paper_klaim',
-        question: `${lead} bukti apa yang paling kuat untuk mendukung klaim utama dalam paper Anda?`,
+        question: `Bukti apa yang paling kuat untuk mendukung klaim utama dalam paper Anda?`,
       },
     ],
 
     presentasi_tugas_akhir: [
       {
         category: 'ta_masalah',
-        question: `${lead} masalah utama apa yang diselesaikan dalam tugas akhir ini, dan mengapa solusi tersebut dibutuhkan?`,
+        question: `Masalah utama apa yang diselesaikan dalam tugas akhir ini, dan mengapa solusi tersebut dibutuhkan?`,
       },
       {
         category: 'ta_solusi',
-        question: `${lead} bagaimana ${method} membantu membentuk solusi atau alur pengerjaan tugas akhir Anda?`,
+        question: `Bagaimana ${method} membantu membentuk solusi atau alur pengerjaan tugas akhir Anda?`,
       },
       {
         category: 'ta_implementasi',
-        question: `${lead} bagaimana tahapan implementasi atau pelaksanaan penelitian ini dilakukan dari awal sampai akhir?`,
+        question: `Bagaimana tahapan implementasi atau pelaksanaan penelitian ini dilakukan dari awal sampai akhir?`,
       },
       {
         category: 'ta_pengujian',
-        question: `${lead} bagaimana Anda menguji bahwa solusi atau hasil tugas akhir ini benar-benar bekerja sesuai tujuan?`,
+        question: `Bagaimana Anda menguji bahwa solusi atau hasil tugas akhir ini benar-benar bekerja sesuai tujuan?`,
       },
       {
         category: 'ta_manfaat',
-        question: `${lead} siapa pihak yang paling merasakan manfaat dari tugas akhir ini, dan dalam bentuk apa manfaatnya?`,
+        question: `Siapa pihak yang paling merasakan manfaat dari tugas akhir ini, dan dalam bentuk apa manfaatnya?`,
       },
     ],
 
     lainnya: [
       {
         category: 'umum_konteks',
-        question: `${lead} bagaimana fokus "${mainKeyword}" berperan penting dalam penelitian Anda?`,
+        question: `Bagaimana fokus "${mainKeyword}" berperan penting dalam penelitian Anda?`,
       },
       {
         category: 'umum_metode',
-        question: `${lead} bagaimana hubungan antara "${mainKeyword}" dan "${secondKeyword}" dalam membentuk arah penelitian Anda?`,
+        question: `Bagaimana hubungan antara "${mainKeyword}" dan "${secondKeyword}" dalam membentuk arah penelitian Anda?`,
       },
     ],
   };
@@ -912,11 +912,30 @@ export function evaluateAnswer(
 
   if (examinerMode === 'kritis' || examinerMode === 'killer') score -= 5;
 
-  if (!hasQuestionOverlap && !hasResearchSignal) score = Math.min(score, 35);
-  if (!hasQuestionOverlap) score = Math.min(score, 55);
-  if (!hasReasoning) score = Math.min(score, 70);
-  if (!hasEvidence && score > 82) score = 82;
-  if (wordCount < 25 && score > 65) score = 65;
+  const hasEnoughContextualSubstance =
+    hasResearchSignal &&
+    (hasReasoning || hasEvidence || hasMethodTerm) &&
+    wordCount >= 25;
+
+  if (!hasQuestionOverlap && !hasResearchSignal) {
+    score = Math.min(score, 35);
+  }
+
+  if (!hasQuestionOverlap && !hasEnoughContextualSubstance) {
+    score = Math.min(score, 55);
+  }
+
+  if (!hasReasoning) {
+    score = Math.min(score, 70);
+  }
+
+  if (!hasEvidence && score > 82) {
+    score = 82;
+  }
+
+  if (wordCount < 25 && !hasEvidence && score > 65) {
+    score = 65;
+  }
 
   score = Math.min(Math.max(Math.round(score), 0), 100);
 

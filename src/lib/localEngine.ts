@@ -132,6 +132,160 @@ function modeLead(examinerMode: string) {
   return 'Secara kritis,';
 }
 
+function normalizeSessionType(sessionType: string) {
+  const value = String(sessionType || '').toLowerCase();
+
+  if (value.includes('proposal')) return 'proposal';
+  if (value.includes('seminar hasil') || value.includes('hasil')) return 'seminar_hasil';
+  if (value.includes('skripsi')) return 'sidang_skripsi';
+  if (value.includes('paper')) return 'presentasi_paper';
+  if (value.includes('tugas akhir') || value.includes('ta')) return 'presentasi_tugas_akhir';
+
+  return 'lainnya';
+}
+
+function getSessionTypeTemplateQuestions(
+  research: ResearchProfile,
+  lead: string,
+  field: string,
+  method: string,
+  title: string,
+  mainKeyword: string,
+  secondKeyword: string
+) {
+  const sessionType = normalizeSessionType(research.sessionType);
+
+  const templates: Record<string, { category: string; question: string }[]> = {
+    proposal: [
+      {
+        category: 'proposal_latar_belakang',
+        question: `${lead} mengapa topik "${title}" layak diajukan sebagai proposal penelitian pada konteks ${field}?`,
+      },
+      {
+        category: 'proposal_gap',
+        question: `${lead} gap atau celah penelitian apa yang ingin Anda isi melalui penelitian ini?`,
+      },
+      {
+        category: 'proposal_rumusan_masalah',
+        question: `${lead} bagaimana rumusan masalah dan tujuan penelitian Anda saling terhubung secara logis?`,
+      },
+      {
+        category: 'proposal_metode',
+        question: `${lead} mengapa ${method} sudah tepat untuk rencana penelitian ini, dan apa risiko metodologis yang perlu Anda antisipasi?`,
+      },
+      {
+        category: 'proposal_validasi',
+        question: `${lead} bagaimana rencana Anda memastikan data atau temuan yang nanti diperoleh dapat dipercaya?`,
+      },
+    ],
+
+    seminar_hasil: [
+      {
+        category: 'hasil_temuan',
+        question: `${lead} apa temuan utama dari penelitian "${title}" dan bagaimana temuan itu menjawab rumusan masalah?`,
+      },
+      {
+        category: 'hasil_pembahasan',
+        question: `${lead} bagaimana Anda menghubungkan hasil penelitian dengan teori atau penelitian terdahulu yang relevan?`,
+      },
+      {
+        category: 'hasil_validitas',
+        question: `${lead} bukti apa yang paling kuat untuk menunjukkan bahwa hasil penelitian Anda dapat dipertanggungjawabkan?`,
+      },
+      {
+        category: 'hasil_keterbatasan',
+        question: `${lead} apa keterbatasan paling penting dari hasil penelitian ini, dan bagaimana dampaknya terhadap kesimpulan?`,
+      },
+      {
+        category: 'hasil_implikasi',
+        question: `${lead} apa implikasi utama dari hasil penelitian Anda bagi konteks ${field}?`,
+      },
+    ],
+
+    sidang_skripsi: [
+      {
+        category: 'skripsi_konsistensi',
+        question: `${lead} bagaimana Anda memastikan latar belakang, rumusan masalah, metode, dan hasil penelitian ini sudah saling konsisten?`,
+      },
+      {
+        category: 'skripsi_metode',
+        question: `${lead} mengapa ${method} menjadi pilihan yang paling dapat dipertanggungjawabkan dibanding alternatif lain?`,
+      },
+      {
+        category: 'skripsi_validitas',
+        question: `${lead} bagian mana dari data atau hasil penelitian yang paling kuat mendukung kesimpulan Anda?`,
+      },
+      {
+        category: 'skripsi_kontribusi',
+        question: `${lead} apa kontribusi utama penelitian "${title}" bagi bidang ${field}?`,
+      },
+      {
+        category: 'skripsi_pengembangan',
+        question: `${lead} jika penelitian ini dikembangkan lagi, bagian mana yang paling perlu diperbaiki atau diperluas?`,
+      },
+    ],
+
+    presentasi_paper: [
+      {
+        category: 'paper_novelty',
+        question: `${lead} apa novelty atau kebaruan utama dari paper Anda dibanding penelitian sebelumnya?`,
+      },
+      {
+        category: 'paper_gap',
+        question: `${lead} gap penelitian apa yang paling jelas dijawab oleh paper ini?`,
+      },
+      {
+        category: 'paper_kontribusi',
+        question: `${lead} apa kontribusi ilmiah paling kuat dari penelitian ini, bukan hanya kontribusi praktisnya?`,
+      },
+      {
+        category: 'paper_pembanding',
+        question: `${lead} bagaimana posisi pendekatan Anda dibanding metode atau studi terdahulu yang relevan?`,
+      },
+      {
+        category: 'paper_klaim',
+        question: `${lead} bukti apa yang paling kuat untuk mendukung klaim utama dalam paper Anda?`,
+      },
+    ],
+
+    presentasi_tugas_akhir: [
+      {
+        category: 'ta_masalah',
+        question: `${lead} masalah utama apa yang diselesaikan dalam tugas akhir ini, dan mengapa solusi tersebut dibutuhkan?`,
+      },
+      {
+        category: 'ta_solusi',
+        question: `${lead} bagaimana ${method} membantu membentuk solusi atau alur pengerjaan tugas akhir Anda?`,
+      },
+      {
+        category: 'ta_implementasi',
+        question: `${lead} bagaimana tahapan implementasi atau pelaksanaan penelitian ini dilakukan dari awal sampai akhir?`,
+      },
+      {
+        category: 'ta_pengujian',
+        question: `${lead} bagaimana Anda menguji bahwa solusi atau hasil tugas akhir ini benar-benar bekerja sesuai tujuan?`,
+      },
+      {
+        category: 'ta_manfaat',
+        question: `${lead} siapa pihak yang paling merasakan manfaat dari tugas akhir ini, dan dalam bentuk apa manfaatnya?`,
+      },
+    ],
+
+    lainnya: [
+      {
+        category: 'umum_konteks',
+        question: `${lead} bagaimana fokus "${mainKeyword}" berperan penting dalam penelitian Anda?`,
+      },
+      {
+        category: 'umum_metode',
+        question: `${lead} bagaimana hubungan antara "${mainKeyword}" dan "${secondKeyword}" dalam membentuk arah penelitian Anda?`,
+      },
+    ],
+  };
+
+  return templates[sessionType] || templates.lainnya;
+}
+
 function contextualTemplateBank(research: ResearchProfile, examinerMode: string) {
   const field = research.field?.trim() || 'bidang penelitian Anda';
   const method = research.method?.trim() || 'metode yang digunakan';
@@ -141,7 +295,18 @@ function contextualTemplateBank(research: ResearchProfile, examinerMode: string)
   const secondKeyword = keywords[1] || method;
   const lead = modeLead(examinerMode);
 
+  const sessionTemplates = getSessionTypeTemplateQuestions(
+    research,
+    lead,
+    field,
+    method,
+    title,
+    mainKeyword,
+    secondKeyword
+  );
+
   const general = [
+    ...sessionTemplates,
     {
       category: 'latar_belakang',
       question: `${lead} apa masalah utama yang ingin diselesaikan dalam penelitian "${title}", dan mengapa masalah tersebut penting pada konteks ${field}?`,
@@ -277,6 +442,26 @@ export function generateQuestion(
 
   // Dynamic contextual questions based on keywords
   const specificQuestions: { category: string; q: string }[] = [];
+
+  const keywords = extractContextKeywords(research, 5);
+  const mainKeyword = keywords[0] || field || 'penelitian Anda';
+  const secondKeyword = keywords[1] || method || 'metode yang digunakan';
+  const lead = modeLead(examinerMode);
+
+  specificQuestions.push(
+    ...getSessionTypeTemplateQuestions(
+      research,
+      lead,
+      field || 'bidang penelitian Anda',
+      method || 'metode yang digunakan',
+      title || 'penelitian Anda',
+      mainKeyword,
+      secondKeyword
+    ).map((item) => ({
+      category: item.category,
+      q: item.question,
+    }))
+  );
 
   if (isSystemPakar(research)) {
     specificQuestions.push(

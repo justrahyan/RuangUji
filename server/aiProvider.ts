@@ -324,6 +324,111 @@ function normalizeQuestionMode(mode: string) {
   return map[mode] || map.kritis;
 }
 
+function normalizeSessionType(sessionType: string) {
+  const value = String(sessionType || '').toLowerCase();
+
+  if (value.includes('proposal')) return 'proposal';
+  if (value.includes('seminar hasil') || value.includes('hasil')) return 'seminar_hasil';
+  if (value.includes('skripsi')) return 'sidang_skripsi';
+  if (value.includes('paper')) return 'presentasi_paper';
+  if (value.includes('tugas akhir') || value.includes('ta')) return 'presentasi_tugas_akhir';
+
+  return 'lainnya';
+}
+
+function getSessionTypeGuidance(sessionType: string) {
+  const normalized = normalizeSessionType(sessionType);
+
+  const map: Record<string, string> = {
+    proposal: `
+Jenis sidang: Ujian Proposal.
+Arah pertanyaan harus berfokus pada kelayakan rencana penelitian, bukan hasil akhir.
+Prioritaskan pertanyaan tentang:
+- latar belakang dan urgensi masalah,
+- gap penelitian,
+- rumusan masalah dan tujuan,
+- batasan penelitian,
+- alasan memilih pendekatan/metode,
+- rencana pengumpulan data,
+- rencana validasi atau teknik analisis,
+- risiko metodologis sebelum penelitian dilakukan.
+
+Hindari terlalu banyak bertanya tentang hasil akhir, pembahasan hasil, kesimpulan final, atau kontribusi final yang belum tersedia.
+`.trim(),
+
+    seminar_hasil: `
+Jenis sidang: Seminar Hasil.
+Arah pertanyaan harus berfokus pada temuan, pembahasan, dan validitas hasil.
+Prioritaskan pertanyaan tentang:
+- hasil utama penelitian,
+- interpretasi temuan,
+- hubungan hasil dengan rumusan masalah,
+- pembahasan dibanding teori atau penelitian terdahulu,
+- validitas hasil,
+- keterbatasan data atau analisis,
+- implikasi hasil penelitian.
+
+Boleh menyinggung metode, tetapi jangan terlalu dominan seperti ujian proposal.
+`.trim(),
+
+    sidang_skripsi: `
+Jenis sidang: Sidang Skripsi.
+Arah pertanyaan harus menyeluruh karena penelitian dianggap sudah final.
+Prioritaskan pertanyaan tentang:
+- latar belakang dan urgensi,
+- kesesuaian rumusan masalah, tujuan, metode, dan hasil,
+- alasan metodologis,
+- validitas data atau temuan,
+- kontribusi penelitian,
+- keterbatasan,
+- pengembangan lanjutan,
+- kesiapan mahasiswa mempertahankan keseluruhan isi penelitian.
+
+Pertanyaan boleh menguji bagian mana pun dari penelitian secara seimbang.
+`.trim(),
+
+    presentasi_paper: `
+Jenis sidang: Presentasi Paper.
+Arah pertanyaan harus berfokus pada kualitas ilmiah paper.
+Prioritaskan pertanyaan tentang:
+- novelty atau kebaruan,
+- gap penelitian,
+- kontribusi ilmiah,
+- posisi penelitian dibanding studi terdahulu,
+- kekuatan metode atau eksperimen,
+- validitas klaim,
+- keterbatasan paper,
+- potensi publikasi atau pengembangan riset.
+
+Gunakan gaya pertanyaan yang menguji kontribusi, bukan sekadar isi laporan.
+`.trim(),
+
+    presentasi_tugas_akhir: `
+Jenis sidang: Presentasi Tugas Akhir.
+Arah pertanyaan harus berfokus pada masalah, solusi, implementasi, dan pengujian.
+Prioritaskan pertanyaan tentang:
+- masalah utama yang diselesaikan,
+- alasan memilih solusi/metode,
+- alur kerja atau tahapan pengerjaan,
+- implementasi atau penerapan,
+- hasil pengujian,
+- manfaat praktis,
+- kendala pengerjaan,
+- pengembangan lanjutan.
+
+Jangan otomatis menganggap tugas akhir selalu aplikasi/software jika konteks dokumen tidak menyebutnya.
+`.trim(),
+
+    lainnya: `
+Jenis sidang: Lainnya.
+Arah pertanyaan harus fleksibel mengikuti dokumen, bidang/topik, metode, abstrak, dan hal yang ingin dilatih.
+Jangan memaksakan pola sidang skripsi, proposal, paper, atau seminar hasil jika konteks tidak mendukung.
+`.trim(),
+  };
+
+  return map[normalized] || map.lainnya;
+}
+
 function getQuestionFocusPlan(mode: string, questionIndex: number) {
   const plans: Record<string, string[]> = {
     santai: [
@@ -470,6 +575,7 @@ export async function generateDefenseQuestionsBatchAI(payload: any) {
     : [];
 
   const researchContext = buildResearchContext(updatedResearch);
+  const sessionTypeGuidance = getSessionTypeGuidance(updatedResearch?.sessionType);
   const previousContext = getAntiRepeatInstruction(previousQuestions);
   const forbiddenFocus = getForbiddenRepeatedFocus(previousQuestions);
   const randomSeed = buildRandomSeed();
@@ -489,6 +595,9 @@ ${researchContext}
 
 Mode penguji:
 ${examinerMode} — ${normalizeQuestionMode(examinerMode)}
+
+Arahan berdasarkan jenis sidang:
+${sessionTypeGuidance}
 
 Nomor pertanyaan yang perlu dibuat:
 Mulai dari nomor ${startIndex + 1} sebanyak ${batchSize} pertanyaan.
@@ -510,21 +619,22 @@ ATURAN WAJIB:
 3. Jangan mengulang pertanyaan sebelumnya, baik secara kalimat maupun maksud.
 4. Jangan membuat pertanyaan yang tidak relevan dengan bidang/topik/metode/dokumen.
 5. Gunakan panduan variasi fokus sebagai arah umum, tetapi tetap prioritaskan isi dokumen. Jangan memaksakan fokus jika tidak sesuai dengan dokumen.
-6. Untuk mode santai, buat pertanyaan yang mudah dijawab secara bertahap dan bersahabat. Jangan menanyakan konsep teoretis yang rumit, overfitting, atau metrik evaluasi mendalam.
-7. Jangan selalu memulai dengan frasa "Bisa Anda ceritakan..." atau "Mengapa Anda memilih...".
-8. Jangan mengasumsikan penelitian ini adalah sistem/software jika dokumen tidak menyebut pengembangan sistem.
-9. Mode implementasi berarti penerapan hasil atau pelaksanaan penelitian, bukan selalu implementasi aplikasi.
-10. Jangan menanyakan metrik evaluasi, akurasi, precision, recall, F1-score, confusion matrix, atau machine learning jika penelitian tidak membahas model/performa/eksperimen kuantitatif.
-11. DILARANG KERAS menanyakan "overfitting" atau "underfitting" kecuali penelitian ini secara spesifik melatih model machine learning/deep learning/prediktif kuantitatif. Bahkan jika bertopik ML, tanyakan overfitting maksimal satu kali dalam seluruh sesi latihan.
-12. Hubungkan pertanyaan secara spesifik dengan data, objek, lokasi, variabel, informan, atau temuan konkret yang tertulis di dokumen mahasiswa.
-13. Jika dokumen membahas YOLO/Computer Vision, gunakan istilah sesuai dokumen seperti YOLOv8n, CBAM, Coordinate Attention, backbone, neck, attention mechanism, mAP, inference time, fine-grained gesture, preprocessing, augmentasi, dan labeling.
-14. Jangan memaksakan istilah machine learning umum apabila dokumen lebih spesifik membahas computer vision, deteksi objek, YOLO, attention mechanism, atau pengolahan citra.
-15. Jangan gunakan frasa umum seperti "adil dan kredibel", "train-validation-test split", "overfitting", atau "metrik evaluasi" kecuali bagian itu memang tertulis jelas dan relevan di dokumen.
-16. Pertanyaan harus mengambil konteks dari bagian spesifik dokumen, misalnya latar belakang, metode, rancangan model, dataset, preprocessing, arsitektur, hasil, pembahasan, kesimpulan, atau keterbatasan.
-17. Pertanyaan harus terdengar seperti dosen penguji asli, bukan chatbot template.
-18. Setiap pertanyaan cukup 1 kalimat atau maksimal 2 kalimat pendek.
-19. Jangan buat pertanyaan terlalu mirip dengan daftar pertanyaan bank lokal.
-20. Semua pertanyaan dalam batch harus berbeda fokus.
+6. Jenis sidang/presentasi wajib memengaruhi arah pertanyaan. Ujian Proposal fokus pada rencana penelitian; Seminar Hasil fokus pada temuan dan pembahasan; Sidang Skripsi fokus menyeluruh; Presentasi Paper fokus novelty dan kontribusi ilmiah; Presentasi Tugas Akhir fokus solusi, implementasi, dan pengujian.
+7. Untuk mode santai, buat pertanyaan yang mudah dijawab secara bertahap dan bersahabat. Jangan menanyakan konsep teoretis yang rumit, overfitting, atau metrik evaluasi mendalam.
+8. Jangan selalu memulai dengan frasa "Bisa Anda ceritakan..." atau "Mengapa Anda memilih...".
+9. Jangan mengasumsikan penelitian ini adalah sistem/software jika dokumen tidak menyebut pengembangan sistem.
+10. Mode implementasi berarti penerapan hasil atau pelaksanaan penelitian, bukan selalu implementasi aplikasi.
+11. Jangan menanyakan metrik evaluasi, akurasi, precision, recall, F1-score, confusion matrix, atau machine learning jika penelitian tidak membahas model/performa/eksperimen kuantitatif.
+12. DILARANG KERAS menanyakan "overfitting" atau "underfitting" kecuali penelitian ini secara spesifik melatih model machine learning/deep learning/prediktif kuantitatif. Bahkan jika bertopik ML, tanyakan overfitting maksimal satu kali dalam seluruh sesi latihan.
+13. Hubungkan pertanyaan secara spesifik dengan data, objek, lokasi, variabel, informan, atau temuan konkret yang tertulis di dokumen mahasiswa.
+14. Jika dokumen membahas YOLO/Computer Vision, gunakan istilah sesuai dokumen seperti YOLOv8n, CBAM, Coordinate Attention, backbone, neck, attention mechanism, mAP, inference time, fine-grained gesture, preprocessing, augmentasi, dan labeling.
+15. Jangan memaksakan istilah machine learning umum apabila dokumen lebih spesifik membahas computer vision, deteksi objek, YOLO, attention mechanism, atau pengolahan citra.
+16. Jangan gunakan frasa umum seperti "adil dan kredibel", "train-validation-test split", "overfitting", atau "metrik evaluasi" kecuali bagian itu memang tertulis jelas dan relevan di dokumen.
+17. Pertanyaan harus mengambil konteks dari bagian spesifik dokumen, misalnya latar belakang, metode, rancangan model, dataset, preprocessing, arsitektur, hasil, pembahasan, kesimpulan, atau keterbatasan.
+18. Pertanyaan harus terdengar seperti dosen penguji asli, bukan chatbot template.
+19. Setiap pertanyaan cukup 1 kalimat atau maksimal 2 kalimat pendek.
+20. Jangan buat pertanyaan terlalu mirip dengan daftar pertanyaan bank lokal.
+21. Semua pertanyaan dalam batch harus berbeda fokus.
 
 Output wajib JSON valid tanpa markdown, tanpa penjelasan tambahan:
 {

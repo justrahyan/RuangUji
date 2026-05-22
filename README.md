@@ -81,6 +81,19 @@ RuangUji menyediakan fitur penyimpanan draft setup sementara di perangkat penggu
 
 Fitur ini hanya aktif jika pengguna memberikan izin melalui modal persetujuan. File asli yang diunggah tidak disimpan di browser.
 
+#### Penyesuaian Pertanyaan Berdasarkan Jenis Sidang
+
+Jenis sidang yang dipilih pengguna akan memengaruhi arah pertanyaan yang diberikan oleh RuangUji. Dengan begitu, pertanyaan tidak hanya mengikuti topik penelitian, tetapi juga menyesuaikan konteks presentasi akademik yang sedang dilatih.
+
+| Jenis Sidang | Fokus Pertanyaan |
+| --- | --- |
+| Ujian Proposal | Gap penelitian, rumusan masalah, tujuan, metode, dan rencana validasi |
+| Seminar Hasil | Hasil, pembahasan, interpretasi, validitas, dan keterbatasan |
+| Sidang Skripsi | Pembahasan menyeluruh dari latar belakang, metode, hasil, kontribusi, sampai pengembangan |
+| Presentasi Paper | Novelty, kontribusi ilmiah, gap penelitian, eksperimen, dan perbandingan dengan studi terdahulu |
+| Presentasi Tugas Akhir | Masalah, solusi/sistem/metode, implementasi, pengujian, dan manfaat praktis |
+| Lainnya | Fleksibel mengikuti dokumen, bidang, metode, dan concern pengguna |
+
 ---
 
 ### 2. Mode Penguji
@@ -157,7 +170,7 @@ Untuk menjaga penggunaan API AI tetap terkendali, RuangUji mendukung pembatasan 
 Secara default:
 
 ```txt
-5 sesi latihan setiap 8 jam
+5 sesi latihan setiap 6 jam
 ```
 
 Limit ini berjalan di sisi server, bukan hanya localStorage browser.
@@ -309,8 +322,6 @@ Keterangan:
 | `ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK` | Mengaktifkan fallback pertanyaan berbasis template kontekstual saat API penuh |
 | `AI_EVALUATE_EACH_ANSWER`             | Mengatur apakah setiap jawaban dinilai langsung oleh AI                       |
 | `AI_FINAL_EVALUATION`                 | Mengatur apakah evaluasi akhir menggunakan AI                                 |
-
-````
 
 ---
 

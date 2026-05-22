@@ -6,6 +6,7 @@ import {
   Bot, FileText, Mic, MessageSquare, LineChart,
   History, ChevronRight, ChevronDown, ChevronUp
 } from 'lucide-react';
+import LandingSimulatorPreview from '../components/LandingSimulatorPreview';
 
 export default function LandingPage() {
   // Mode Penguji State
@@ -206,51 +207,7 @@ export default function LandingPage() {
       </section>
 
       {/* Simulator Preview Section */}
-      <section className="section simulator-preview-section">
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <SectionHeader
-            label="Preview Simulator"
-            title="Simulasi Pertanyaan & Feedback"
-            subtitle="Dapatkan gambaran nyata pertanyaan kritis dari dosen penguji virtual beserta masukan langsung untuk menyempurnakan jawaban Anda."
-            centered
-          />
-
-          <div className="fade-up" style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-            <div className="card soft-shadow simulator-preview-card">
-              <div className="simulator-preview-head">
-                <div className="simulator-preview-user">
-                  <div className="simulator-preview-icon">
-                    <Bot size={20} color="var(--primary-blue)" />
-                  </div>
-
-                  <div>
-                    <h4>Pertanyaan Penguji</h4>
-                    <p>Mode: Kritis</p>
-                  </div>
-                </div>
-
-                <span className="badge simulator-score-badge">Skor: 85</span>
-              </div>
-
-              <div className="simulator-question-box">
-                <p>
-                  "Mengapa Anda merasa metode forward chaining lebih unggul dibanding certainty factor dalam menangani ketidakpastian data pada penelitian ini?"
-                </p>
-              </div>
-
-              <div className="simulator-feedback-box">
-                <MessageSquare size={18} color="var(--primary-blue)" className="simulator-feedback-icon" />
-                <div>
-                  <h5>Feedback Evaluasi</h5>
-                  <p>
-                    Argumen logis, namun perkuat dengan landasan perbandingan teoritis atau batasan memori perangkat agar alasan implementasi lebih kokoh.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <LandingSimulatorPreview />
 
       {/* Fitur Utama Section */}
       <section className="section-soft" style={{ backgroundColor: '#f6f8fb', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>

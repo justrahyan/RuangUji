@@ -66,6 +66,58 @@ function SpeakingBubbles() {
     );
 }
 
+function ListeningWaves() {
+    return (
+        <motion.g>
+            <motion.circle
+                cx="160"
+                cy="178"
+                r="92"
+                fill="none"
+                stroke="#93C5FD"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray="18 16"
+                animate={{ rotate: [0, 360], opacity: [0.35, 0.85, 0.35] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+                style={{ transformOrigin: '160px 178px' }}
+            />
+
+            <motion.circle
+                cx="160"
+                cy="178"
+                r="112"
+                fill="none"
+                stroke="#BFDBFE"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeDasharray="12 20"
+                animate={{ rotate: [360, 0], opacity: [0.2, 0.65, 0.2] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: 'linear' }}
+                style={{ transformOrigin: '160px 178px' }}
+            />
+
+            <motion.path
+                d="M38 176C26 188 20 205 24 224"
+                stroke="#60A5FA"
+                strokeWidth="7"
+                strokeLinecap="round"
+                animate={{ opacity: [0.25, 1, 0.25], x: [0, -4, 0] }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
+            />
+
+            <motion.path
+                d="M282 176C294 188 300 205 296 224"
+                stroke="#60A5FA"
+                strokeWidth="7"
+                strokeLinecap="round"
+                animate={{ opacity: [0.25, 1, 0.25], x: [0, 4, 0] }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut', delay: 0.15 }}
+            />
+        </motion.g>
+    );
+}
+
 export default function RuangUjiBot({
     state = 'idle',
     size = 220,
@@ -111,6 +163,7 @@ export default function RuangUjiBot({
             >
                 {/* Speaking bubble effect */}
                 {isSpeaking && <SpeakingBubbles />}
+                {isListening && <ListeningWaves />}
 
                 {/* Shadow */}
                 <motion.ellipse
@@ -254,36 +307,34 @@ export default function RuangUjiBot({
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.2 }}
                     >
-                        <motion.rect
-                            x="139"
-                            y="240"
-                            width="8"
-                            height="18"
-                            rx="4"
-                            fill="white"
-                            animate={{ height: [10, 24, 12], y: [246, 232, 244] }}
-                            transition={{ duration: 0.55, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                        <motion.rect
-                            x="156"
-                            y="236"
-                            width="8"
-                            height="22"
-                            rx="4"
-                            fill="white"
-                            animate={{ height: [22, 10, 26], y: [236, 248, 232] }}
-                            transition={{ duration: 0.55, repeat: Infinity, ease: 'easeInOut', delay: 0.08 }}
-                        />
-                        <motion.rect
-                            x="173"
-                            y="240"
-                            width="8"
-                            height="18"
-                            rx="4"
-                            fill="white"
-                            animate={{ height: [12, 26, 10], y: [244, 230, 246] }}
-                            transition={{ duration: 0.55, repeat: Infinity, ease: 'easeInOut', delay: 0.16 }}
-                        />
+                        {[
+                            { x: 139, y: 240, height: 18, delay: 0, scale: [0.65, 1.35, 0.75] },
+                            { x: 156, y: 236, height: 22, delay: 0.08, scale: [1.2, 0.6, 1.45] },
+                            { x: 173, y: 240, height: 18, delay: 0.16, scale: [0.75, 1.45, 0.65] },
+                        ].map((bar, index) => (
+                            <motion.rect
+                                key={index}
+                                x={bar.x}
+                                y={bar.y}
+                                width={8}
+                                height={bar.height}
+                                rx={4}
+                                fill="white"
+                                animate={{
+                                    scaleY: bar.scale,
+                                }}
+                                transition={{
+                                    duration: 0.55,
+                                    repeat: Infinity,
+                                    ease: 'easeInOut',
+                                    delay: bar.delay,
+                                }}
+                                style={{
+                                    transformBox: 'fill-box',
+                                    transformOrigin: 'center bottom',
+                                }}
+                            />
+                        ))}
                     </motion.g>
                 )}
 
@@ -313,24 +364,48 @@ export default function RuangUjiBot({
                 {isListening && (
                     <motion.g>
                         <motion.circle
-                            cx="160"
-                            cy="198"
-                            r="95"
+                            cx={160}
+                            cy={198}
+                            r={95}
                             stroke="#93C5FD"
-                            strokeWidth="4"
+                            strokeWidth={4}
                             fill="transparent"
-                            animate={{ r: [92, 116], opacity: [0.35, 0] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeOut' }}
+                            animate={{
+                                scale: [0.96, 1.24],
+                                opacity: [0.35, 0],
+                            }}
+                            transition={{
+                                duration: 1.2,
+                                repeat: Infinity,
+                                ease: 'easeOut',
+                            }}
+                            style={{
+                                transformBox: 'fill-box',
+                                transformOrigin: 'center',
+                            }}
                         />
+
                         <motion.circle
-                            cx="160"
-                            cy="198"
-                            r="105"
+                            cx={160}
+                            cy={198}
+                            r={105}
                             stroke="#60A5FA"
-                            strokeWidth="3"
+                            strokeWidth={3}
                             fill="transparent"
-                            animate={{ r: [96, 128], opacity: [0.22, 0] }}
-                            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeOut', delay: 0.25 }}
+                            animate={{
+                                scale: [0.92, 1.26],
+                                opacity: [0.22, 0],
+                            }}
+                            transition={{
+                                duration: 1.4,
+                                repeat: Infinity,
+                                ease: 'easeOut',
+                                delay: 0.25,
+                            }}
+                            style={{
+                                transformBox: 'fill-box',
+                                transformOrigin: 'center',
+                            }}
                         />
                     </motion.g>
                 )}

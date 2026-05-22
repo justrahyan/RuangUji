@@ -4,7 +4,7 @@
 
 Project ini dibuat untuk program **#JuaraVibeCoding** dengan mengambil tema **Edukasi: Sang Teman Belajar**. RuangUji memungkinkan pengguna mengunggah dokumen penelitian, memilih mode penguji, menjalani simulasi tanya-jawab melalui mode chat atau voice, lalu mendapatkan evaluasi jawaban secara langsung.
 
-**Live Demo:** [https://ruanguji-727794265175.asia-southeast2.run.app/](https://ruanguji-727794265175.asia-southeast)
+**Live Demo:** [https://ruanguji-727794265175.asia-southeast2.run.app/](https://ruanguji-727794265175.asia-southeast2.run.app/)
 
 > Catatan: AI dapat membuat kesalahan atau kurang sesuai konteks. Hasil simulasi digunakan sebagai bahan latihan, bukan penilaian final.
 
@@ -74,6 +74,12 @@ Pengguna dapat mengisi informasi penelitian seperti:
 * Upload dokumen penelitian
 
 Dokumen yang diunggah digunakan sebagai konteks utama agar pertanyaan lebih sesuai dengan isi penelitian.
+
+#### Draft Setup Sementara
+
+RuangUji menyediakan fitur penyimpanan draft setup sementara di perangkat pengguna. Fitur ini membantu menjaga isian form agar tidak langsung hilang ketika halaman tidak sengaja refresh atau tertutup.
+
+Fitur ini hanya aktif jika pengguna memberikan izin melalui modal persetujuan. File asli yang diunggah tidak disimpan di browser.
 
 ---
 
@@ -155,6 +161,28 @@ Secara default:
 ```
 
 Limit ini berjalan di sisi server, bukan hanya localStorage browser.
+
+---
+
+### 8. Mode Hemat API
+
+RuangUji mendukung mode hemat API untuk mengurangi risiko limit Gemini API. Jika API sedang penuh atau gagal digunakan, sistem dapat tetap menjalankan sebagian alur simulasi menggunakan pertanyaan template yang disusun berdasarkan konteks input dan dokumen pengguna.
+
+Mode ini membantu aplikasi tetap bisa digunakan meskipun layanan AI sedang terbatas. Namun, jika evaluasi AI tidak tersedia, hasil yang diberikan akan bersifat fallback dan tetap ditampilkan sebagai bahan latihan, bukan penilaian final.
+
+Konfigurasi utama:
+
+```env
+ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK=true
+AI_EVALUATE_EACH_ANSWER=false
+AI_FINAL_EVALUATION=true
+````
+
+Dengan konfigurasi tersebut, RuangUji akan:
+
+* Menghemat pemakaian API pada evaluasi per jawaban.
+* Tetap membuat pertanyaan berbasis konteks ketika API utama terbatas.
+* Memprioritaskan AI untuk evaluasi akhir agar hasil sesi tetap lebih bermakna.
 
 ---
 
@@ -258,22 +286,31 @@ GEMINI_FALLBACK_MODELS=gemini-2.5-flash-lite,gemini-3.5-flash
 VOICE_DEFAULT=calm-female
 
 TRAINING_SESSION_LIMIT=5
-TRAINING_SESSION_WINDOW_HOURS=8
+TRAINING_SESSION_WINDOW_HOURS=6
 DEV_BYPASS_USAGE_LIMIT=false
-```
+
+ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK=true
+AI_EVALUATE_EACH_ANSWER=false
+AI_FINAL_EVALUATION=true
+````
 
 Keterangan:
 
-| Variable                        | Fungsi                                                    |
-| ------------------------------- | --------------------------------------------------------- |
-| `AI_PROVIDER`                   | Menentukan provider AI yang digunakan                     |
-| `GEMINI_API_KEY`                | API key Gemini, bisa satu atau banyak key dipisahkan koma |
-| `GEMINI_MODEL`                  | Model utama Gemini                                        |
-| `GEMINI_FALLBACK_MODELS`        | Daftar model fallback jika model utama gagal/limit        |
-| `VOICE_DEFAULT`                 | Konfigurasi default suara                                 |
-| `TRAINING_SESSION_LIMIT`        | Jumlah maksimal sesi latihan                              |
-| `TRAINING_SESSION_WINDOW_HOURS` | Rentang waktu reset limit sesi                            |
-| `DEV_BYPASS_USAGE_LIMIT`        | Mode bypass limit untuk development lokal                 |
+| Variable                              | Fungsi                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| `AI_PROVIDER`                         | Menentukan provider AI yang digunakan                                         |
+| `GEMINI_API_KEY`                      | API key Gemini, bisa satu atau banyak key dipisahkan koma                     |
+| `GEMINI_MODEL`                        | Model utama Gemini                                                            |
+| `GEMINI_FALLBACK_MODELS`              | Daftar model fallback jika model utama gagal/limit                            |
+| `VOICE_DEFAULT`                       | Konfigurasi default suara                                                     |
+| `TRAINING_SESSION_LIMIT`              | Jumlah maksimal sesi latihan                                                  |
+| `TRAINING_SESSION_WINDOW_HOURS`       | Rentang waktu reset limit sesi                                                |
+| `DEV_BYPASS_USAGE_LIMIT`              | Mode bypass limit untuk development lokal                                     |
+| `ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK` | Mengaktifkan fallback pertanyaan berbasis template kontekstual saat API penuh |
+| `AI_EVALUATE_EACH_ANSWER`             | Mengatur apakah setiap jawaban dinilai langsung oleh AI                       |
+| `AI_FINAL_EVALUATION`                 | Mengatur apakah evaluasi akhir menggunakan AI                                 |
+
+````
 
 ---
 

@@ -64,9 +64,16 @@ interface VoiceAnswerProps {
   disabled?: boolean;
   isThinking?: boolean;
   autoMode?: boolean;
+  onListeningChange?: (isListening: boolean) => void;
 }
 
-export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }: VoiceAnswerProps) {
+export default function VoiceAnswer({
+  onSubmit,
+  disabled,
+  isThinking,
+  autoMode,
+  onListeningChange,
+}: VoiceAnswerProps) {
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
   const [finalTranscript, _setFinalTranscript] = useState('');
@@ -99,6 +106,14 @@ export default function VoiceAnswer({ onSubmit, disabled, isThinking, autoMode }
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  useEffect(() => {
+    onListeningChange?.(isListening);
+
+    return () => {
+      onListeningChange?.(false);
+    };
+  }, [isListening, onListeningChange]);
 
   // Keep onSubmit reference up to date to avoid closures
   const onSubmitRef = useRef(onSubmit);

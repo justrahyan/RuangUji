@@ -13,7 +13,7 @@ import {
   generateFinalEvaluationAI,
   documentCache
 } from './server/aiProvider.js';
-import { evaluateAnswer, generateFinalEvaluation } from './src/lib/localEngine.js';
+import { evaluateAnswer, generateFinalEvaluation, generateContextualQuestionBatch } from './src/lib/localEngine.js';
 
 const app = express();
 
@@ -37,8 +37,34 @@ type UsageStore = Record<string, UsageRecord>;
 const usageStorePath = path.join(__dirname, '.ruanguji-usage.json');
 
 const SESSION_LIMIT = Math.max(1, Number(process.env.TRAINING_SESSION_LIMIT || 5));
-const WINDOW_HOURS = Math.max(1, Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8));
+const WINDOW_HOURS = Math.max(1, Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 6));
 const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000;
+
+const ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK =
+  process.env.ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK !== 'false';
+
+const AI_EVALUATE_EACH_ANSWER =
+  process.env.AI_EVALUATE_EACH_ANSWER === 'true';
+
+const AI_FINAL_EVALUATION =
+  process.env.AI_FINAL_EVALUATION !== 'false';
+
+function getResearchWithFullDocument(research: any) {
+  if (!research) return {};
+  if (research.documentText) return research;
+
+  if (research.docId) {
+    const cachedText = documentCache.get(research.docId);
+    if (cachedText) {
+      return {
+        ...research,
+        documentText: cachedText,
+      };
+    }
+  }
+
+  return research;
+}
 
 function readUsageStore(): UsageStore {
   try {
@@ -295,8 +321,8 @@ app.get('/api/usage/status', (req, res) => {
       limit: 999,
       used: 0,
       remaining: 999,
-      resetAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      windowHours: Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8),
+      resetAt: new Date(Date.now() + WINDOW_MS).toISOString(),
+      windowHours: WINDOW_HOURS,
       blocked: false,
       message: 'Developer bypass aktif.',
     });
@@ -313,8 +339,8 @@ app.post('/api/usage/start-session', (req, res) => {
       limit: 999,
       used: 0,
       remaining: 999,
-      resetAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      windowHours: Number(process.env.TRAINING_SESSION_WINDOW_HOURS || 8),
+      resetAt: new Date(Date.now() + WINDOW_MS).toISOString(),
+      windowHours: WINDOW_HOURS,
       blocked: false,
       message: 'Developer bypass aktif. Limit latihan tidak dihitung.',
     });
@@ -418,19 +444,47 @@ app.post('/api/extract-document', upload.single('file'), async (req, res) => {
 
 app.get('/api/config', (req, res) => {
   res.json({
-    voiceDefault: process.env.VOICE_DEFAULT || 'calm-female'
+    voiceDefault: process.env.VOICE_DEFAULT || 'calm-female',
+    aiEvaluateEachAnswer: AI_EVALUATE_EACH_ANSWER,
+    aiFinalEvaluation: AI_FINAL_EVALUATION,
+    contextualTemplateFallback: ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK,
+    trainingSessionLimit: SESSION_LIMIT,
+    trainingSessionWindowHours: WINDOW_HOURS,
+    devBypassUsageLimit: process.env.DEV_BYPASS_USAGE_LIMIT === 'true',
   });
 });
 
 app.post('/api/ai/questions-batch', async (req, res) => {
+  const research = getResearchWithFullDocument(req.body?.research);
+
   try {
-    const data = await generateDefenseQuestionsBatchAI(req.body);
+    const data = await generateDefenseQuestionsBatchAI({
+      ...req.body,
+      research,
+    });
+
     return res.json({
       ...data,
       provider: 'gemini',
+      quotaMode: false,
     });
   } catch (error: any) {
     console.error('AI Questions Batch Error:', error?.message || error);
+
+    if (ENABLE_CONTEXTUAL_TEMPLATE_FALLBACK) {
+      const fallback = generateContextualQuestionBatch({
+        research,
+        examinerMode: req.body?.examinerMode || research.examinerMode || 'kritis',
+        questionIndex: Number(req.body?.questionIndex || 0),
+        batchSize: Math.max(1, Number(req.body?.batchSize || 5)),
+        previousQuestions: Array.isArray(req.body?.previousQuestions) ? req.body.previousQuestions : [],
+        fallbackReason:
+          error?.message ||
+          'Semua model Gemini gagal digunakan atau kuota AI sedang penuh.',
+      });
+
+      return res.json(fallback);
+    }
 
     return res.status(500).json({
       ok: false,
@@ -464,24 +518,88 @@ app.post('/api/ai/question', async (req, res) => {
 });
 
 app.post('/api/ai/evaluate', async (req, res) => {
+  const research = getResearchWithFullDocument(req.body?.research);
+
+  if (!AI_EVALUATE_EACH_ANSWER) {
+    const localEval = evaluateAnswer(
+      req.body.question,
+      req.body.answer,
+      research,
+      req.body.examinerMode
+    );
+
+    return res.json({
+      ...localEval,
+      provider: 'local-fast-evaluation',
+      quotaMode: true,
+      reason: 'Evaluasi per jawaban menggunakan local engine untuk menghemat kuota Gemini.',
+    });
+  }
+
   try {
-    const data = await evaluateDefenseAnswerAI(req.body);
+    const data = await evaluateDefenseAnswerAI({
+      ...req.body,
+      research,
+    });
+
     res.json(data);
   } catch (error: any) {
     console.error('AI Evaluate Error:', error.message);
-    const localEval = evaluateAnswer(req.body.question, req.body.answer, req.body.research, req.body.examinerMode);
-    res.json({ ...localEval, provider: "local-fallback", reason: `AI Provider Error: ${error.message}` });
+
+    const localEval = evaluateAnswer(
+      req.body.question,
+      req.body.answer,
+      research,
+      req.body.examinerMode
+    );
+
+    res.json({
+      ...localEval,
+      provider: 'local-fallback',
+      quotaMode: true,
+      reason: `AI Provider Error: ${error.message}`,
+    });
   }
 });
 
 app.post('/api/ai/final-evaluation', async (req, res) => {
+  const research = getResearchWithFullDocument(req.body?.research);
+
+  if (!AI_FINAL_EVALUATION) {
+    const localFinal = generateFinalEvaluation({
+      research,
+      transcript: req.body.transcript,
+    } as any);
+
+    return res.json({
+      ...localFinal,
+      provider: 'local-final-evaluation',
+      quotaMode: true,
+      reason: 'Evaluasi akhir Gemini dimatikan melalui konfigurasi server.',
+    });
+  }
+
   try {
-    const data = await generateFinalEvaluationAI(req.body);
+    const data = await generateFinalEvaluationAI({
+      ...req.body,
+      research,
+    });
+
     res.json(data);
   } catch (error: any) {
     console.error('AI Final Eval Error:', error.message);
-    const localFinal = generateFinalEvaluation({ research: req.body.research, transcript: req.body.transcript } as any);
-    res.json({ ...localFinal, provider: "local-fallback", reason: `AI Provider Error: ${error.message}` });
+
+    const localFinal = generateFinalEvaluation({
+      research,
+      transcript: req.body.transcript,
+    } as any);
+
+    res.json({
+      ...localFinal,
+      provider: 'local-fallback',
+      quotaMode: true,
+      reason: `AI Provider Error: ${error.message}`,
+    });
   }
 });
 

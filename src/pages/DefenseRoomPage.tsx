@@ -1,8 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Volume2, VolumeX, Bot, Send, Speech, PanelLeftClose, PanelRightClose, Info, FileText, Loader2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Volume2,
+  VolumeX,
+  Bot,
+  Send,
+  Speech,
+  PanelLeftClose,
+  PanelRightClose,
+  Info,
+  FileText,
+  Loader2,
+  AudioLines,
+} from 'lucide-react';
 import type { DefenseSession, TranscriptItem } from '../types';
-import { getActiveSession, clearActiveSession, saveActiveSession, saveHistoryItem, getInMemoryDocumentText } from '../lib/storage';
+import {
+  getActiveSession,
+  clearActiveSession,
+  saveActiveSession,
+  saveHistoryItem,
+  getInMemoryDocumentText,
+} from '../lib/storage';
 import { evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
 import { speakText, stopSpeaking, handleMuteToggle } from '../lib/speech';
 
@@ -15,34 +34,34 @@ import logoRuangUji from '../assets/logo-ruanguji.png';
 
 function normalizeFeedback(evaluation: any) {
   let score = Number(evaluation.score);
-  if (isNaN(score)) {
-    score = 0;
-  }
+  if (isNaN(score)) score = 0;
   score = Math.max(0, Math.min(100, score));
 
   let strengths: string[] = [];
   if (Array.isArray(evaluation.strengths)) {
     strengths = evaluation.strengths.map((s: any) => String(s).trim()).filter(Boolean);
   } else if (typeof evaluation.strengths === 'string') {
-    strengths = evaluation.strengths.split('\n').map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+    strengths = evaluation.strengths
+      .split('\n')
+      .map((s: string) => s.trim().replace(/^[-*•\d.]+\s*/, ''))
+      .filter(Boolean);
   }
-  if (strengths.length === 0) {
-    strengths = ["Belum terdeteksi secara jelas."];
-  }
+  if (strengths.length === 0) strengths = ['Belum terdeteksi secara jelas.'];
 
   let weaknesses: string[] = [];
   if (Array.isArray(evaluation.weaknesses)) {
     weaknesses = evaluation.weaknesses.map((w: any) => String(w).trim()).filter(Boolean);
   } else if (typeof evaluation.weaknesses === 'string') {
-    weaknesses = evaluation.weaknesses.split('\n').map((w: string) => w.trim().replace(/^[-*•\d.]+\s*/, '')).filter(Boolean);
+    weaknesses = evaluation.weaknesses
+      .split('\n')
+      .map((w: string) => w.trim().replace(/^[-*•\d.]+\s*/, ''))
+      .filter(Boolean);
   }
-  if (weaknesses.length === 0) {
-    weaknesses = ["Tidak ada."];
-  }
+  if (weaknesses.length === 0) weaknesses = ['Tidak ada.'];
 
   let suggestion = evaluation.suggestion || evaluation.saran;
   if (!suggestion || typeof suggestion !== 'string' || !suggestion.trim()) {
-    suggestion = "Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan.";
+    suggestion = 'Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan.';
   } else {
     suggestion = suggestion.trim().replace(/\s+/g, ' ');
   }
@@ -64,7 +83,7 @@ function normalizeFeedback(evaluation: any) {
     suggestion,
     speechText,
     normalizedAnswer,
-    answerCategory: evaluation.answerCategory || ''
+    answerCategory: evaluation.answerCategory || '',
   };
 }
 
@@ -72,14 +91,11 @@ export default function DefenseRoomPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<DefenseSession | null>(null);
 
-  // Modes
-  const [isVoiceMode, setIsVoiceMode] = useState(false); // DEFAULT = CHAT MODE
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
 
-  // Mobile Drawers
   const [showLeftDrawer, setShowLeftDrawer] = useState(false);
   const [showRightDrawer, setShowRightDrawer] = useState(false);
 
-  // States
   const [orbState, setOrbState] = useState<'idle' | 'speaking' | 'listening' | 'thinking'>('idle');
   const [, setSpokenText] = useState('');
   const [, setSpokenMode] = useState<'question' | 'feedback' | 'listening'>('question');
@@ -87,17 +103,18 @@ export default function DefenseRoomPage() {
   const [voiceProfile, setVoiceProfile] = useState(localStorage.getItem('ruanguji_voice_profile') || 'Formal');
   const [hasFeedback, setHasFeedback] = useState(false);
 
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+
   const [chatInput, setChatInput] = useState('');
 
   const [showBackModal, setShowBackModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [detailModalContent,] = useState({ title: '', content: '' });
+  const [detailModalContent] = useState({ title: '', content: '' });
 
   const middleScrollRef = useRef<HTMLDivElement>(null);
 
-  // New stabilization states & refs
   const [currentQuestion, setCurrentQuestion] = useState<{
     id: string;
     text: string;
@@ -109,23 +126,29 @@ export default function DefenseRoomPage() {
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isFinishingSession, setIsFinishingSession] = useState(false);
   const [isEvaluatingAnswer, setIsEvaluatingAnswer] = useState(false);
+  const [quotaMode, setQuotaMode] = useState(false);
+  const [, setQuotaModeReason] = useState('');
   const [, setAiStatus] = useState<'idle' | 'generating-question' | 'evaluating' | 'fallback' | 'error'>('idle');
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
-
-  const toggleItemExpand = (id: string) => {
-    setExpandedItems(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
 
   const questionRequestIdRef = useRef(0);
   const hasUserAnsweredRef = useRef(false);
 
+  const toggleItemExpand = (id: string) => {
+    setExpandedItems((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
   useEffect(() => {
     const active = getActiveSession();
+
     if (active) {
       setSession(active);
+      setQuotaMode(Boolean(active.quotaMode));
+      setQuotaModeReason(active.quotaModeReason || '');
+
       if (active.transcript.length === 0) {
         handleGenerateQuestion(active);
       } else {
@@ -134,16 +157,17 @@ export default function DefenseRoomPage() {
         setSpokenMode(lastItem.type === 'feedback' ? 'feedback' : 'question');
         setHasFeedback(lastItem.type === 'feedback');
 
-        // Restore currentQuestion state from transcript
-        const lastQItem = active.transcript.slice().reverse().find(t => t.type === 'question');
+        const lastQItem = active.transcript.slice().reverse().find((t) => t.type === 'question');
+
         if (lastQItem) {
           setCurrentQuestion({
             id: lastQItem.id,
             text: lastQItem.content,
             category: lastQItem.questionId || 'umum',
-            source: (lastQItem.questionText ? 'ai' : 'local-fallback'),
-            locked: true
+            source: lastQItem.questionText ? 'ai' : 'local-fallback',
+            locked: true,
           });
+
           hasUserAnsweredRef.current = lastItem.type !== 'question';
         }
       }
@@ -162,6 +186,12 @@ export default function DefenseRoomPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isVoiceMode) {
+      setIsVoiceListening(false);
+    }
+  }, [isVoiceMode]);
+
   const toggleVoice = () => {
     const newVal = !voiceEnabled;
 
@@ -169,25 +199,26 @@ export default function DefenseRoomPage() {
     localStorage.setItem('ruanguji_voice_muted', newVal ? 'false' : 'true');
 
     handleMuteToggle();
-
-    // Jangan set orbState ke idle saat mute.
-    // Mute hanya membisukan/menahan suara, bukan membatalkan bacaan.
   };
 
   const buildResearchPayload = (research: DefenseSession['research']) => {
-    const memText = getInMemoryDocumentText(research.id) || getInMemoryDocumentText(research.docId || '') || research.documentText;
+    const memText =
+      getInMemoryDocumentText(research.id) ||
+      getInMemoryDocumentText(research.docId || '') ||
+      research.documentText;
 
-    // Jika ada docId, server sudah menyimpan dokumen penuh di documentCache.
-    // Jangan kirim teks penuh lewat JSON karena bisa kepotong / kena limit request.
-    // documentText hanya dipakai sebagai fallback untuk mode lokal tanpa docId.
     return {
       ...research,
-      documentText: research.docId ? undefined : memText
+      documentText: research.docId ? undefined : memText,
     };
   };
 
   const addTranscript = (item: TranscriptItem, currentSession: DefenseSession) => {
-    const updated = { ...currentSession, transcript: [...currentSession.transcript, item] };
+    const updated = {
+      ...currentSession,
+      transcript: [...currentSession.transcript, item],
+    };
+
     setSession(updated);
     saveActiveSession(updated);
     return updated;
@@ -204,8 +235,8 @@ export default function DefenseRoomPage() {
     const previousQuestions = Array.from(
       new Set(
         currentSession.transcript
-          .filter(t => t.type === 'question')
-          .map(t => t.content.trim())
+          .filter((t) => t.type === 'question')
+          .map((t) => t.content.trim())
           .filter(Boolean)
       )
     );
@@ -277,21 +308,15 @@ export default function DefenseRoomPage() {
     };
 
     try {
-      const cachedQuestion = currentSession.questionBank?.find(
-        item => item.index === currentIndex
-      );
+      const cachedQuestion = currentSession.questionBank?.find((item) => item.index === currentIndex);
 
       if (cachedQuestion?.question) {
         publishQuestion(currentSession, cachedQuestion);
         return;
       }
 
-      const remainingQuestions = Math.max(
-        1,
-        currentSession.research.questionCount - currentIndex
-      );
-
-      const batchSize = Math.min(5, remainingQuestions);
+      const remainingQuestions = Math.max(1, currentSession.research.questionCount - currentIndex);
+      const batchSize = remainingQuestions;
 
       const res = await fetch('/api/ai/questions-batch', {
         method: 'POST',
@@ -315,6 +340,7 @@ export default function DefenseRoomPage() {
         ? data.questions
           .map((item: any) => {
             const question = String(item.question || '').trim();
+
             return {
               index: Number(item.index),
               question,
@@ -322,6 +348,8 @@ export default function DefenseRoomPage() {
               category: String(item.category || 'umum').trim(),
               provider: String(item.provider || data.provider || 'gemini'),
               modelUsed: String(item.modelUsed || data.modelUsed || ''),
+              quotaMode: Boolean(item.quotaMode || data.quotaMode),
+              fallbackReason: String(item.fallbackReason || data.fallbackReason || ''),
             };
           })
           .filter((item: any) => Number.isFinite(item.index) && item.question.length > 10)
@@ -335,16 +363,23 @@ export default function DefenseRoomPage() {
       const incomingIndexes = new Set(incomingQuestions.map((q: any) => q.index));
 
       const mergedBank = [
-        ...oldBank.filter(q => !incomingIndexes.has(q.index)),
+        ...oldBank.filter((q) => !incomingIndexes.has(q.index)),
         ...incomingQuestions,
       ].sort((a, b) => a.index - b.index);
 
       const sessionWithBank: DefenseSession = {
         ...currentSession,
         questionBank: mergedBank,
+        quotaMode: Boolean(data.quotaMode || currentSession.quotaMode),
+        quotaModeReason: data.fallbackReason || currentSession.quotaModeReason || '',
       };
 
-      const selectedQuestion = mergedBank.find(q => q.index === currentIndex);
+      if (data.quotaMode) {
+        setQuotaMode(true);
+        setQuotaModeReason(data.fallbackReason || 'Mode hemat AI aktif karena kuota AI sedang penuh.');
+      }
+
+      const selectedQuestion = mergedBank.find((q) => q.index === currentIndex);
 
       if (!selectedQuestion?.question) {
         throw new Error('Batch pertanyaan berhasil dibuat, tetapi pertanyaan aktif tidak ditemukan.');
@@ -361,11 +396,9 @@ export default function DefenseRoomPage() {
       setOrbState('idle');
 
       const message =
-        `AI gagal membuat pertanyaan dari dokumen.\n\n` +
+        `Sistem belum dapat menyiapkan pertanyaan.\n\n` +
         `Penyebab: ${error?.message || 'Tidak diketahui'}\n\n` +
-        `Sistem sudah mencoba batch pertanyaan dan fallback beberapa model Gemini. ` +
-        `Jika tetap gagal, kemungkinan semua quota/rate limit model sedang habis. ` +
-        `Pertanyaan localEngine tetap dimatikan agar tidak muncul pertanyaan template yang tidak sesuai konteks.`;
+        `Silakan coba ulangi sesi beberapa saat lagi atau periksa koneksi server.`;
 
       const sysItem: TranscriptItem = {
         id: Date.now().toString(),
@@ -381,6 +414,7 @@ export default function DefenseRoomPage() {
   const handleAnswerSubmit = async (answerText: string) => {
     if (!session || !answerText.trim() || !currentQuestion || isGeneratingQuestion || isEvaluatingAnswer) return;
 
+    setIsVoiceListening(false);
     hasUserAnsweredRef.current = true;
     stopSpeaking();
     setIsEvaluatingAnswer(true);
@@ -401,15 +435,15 @@ export default function DefenseRoomPage() {
       questionId: activeAnswerQuestionId,
       questionText: activeAnswerQuestionText,
       answerText: activeAnswerText,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
     const updatedSession = addTranscript(ansItem, session);
-
     const researchPayload = buildResearchPayload(updatedSession.research);
 
     let evaluation;
     let errorOccurred = false;
+
     try {
       const res = await fetch('/api/ai/evaluate', {
         method: 'POST',
@@ -419,20 +453,26 @@ export default function DefenseRoomPage() {
           examinerMode: updatedSession.research.examinerMode,
           question: activeAnswerQuestionText,
           answer: activeAnswerText,
-          transcript: updatedSession.transcript
-        })
+          transcript: updatedSession.transcript,
+        }),
       });
+
       if (!res.ok) throw new Error('API fallback');
+
       evaluation = await res.json();
     } catch (e) {
       console.warn('Fallback evaluate');
-      evaluation = evaluateAnswer(activeAnswerQuestionText, activeAnswerText, researchPayload, updatedSession.research.examinerMode);
+      evaluation = evaluateAnswer(
+        activeAnswerQuestionText,
+        activeAnswerText,
+        researchPayload,
+        updatedSession.research.examinerMode
+      );
       errorOccurred = true;
     }
 
-    // Ignore response if question was changed in the meantime
     if (currentQuestion.id !== activeAnswerQuestionId) {
-      console.warn("Ignored evaluation response: currentQuestion changed while evaluating.");
+      console.warn('Ignored evaluation response: currentQuestion changed while evaluating.');
       setIsEvaluatingAnswer(false);
       setAiStatus('idle');
       setOrbState('idle');
@@ -440,13 +480,32 @@ export default function DefenseRoomPage() {
     }
 
     const normEval = normalizeFeedback(evaluation);
+
+    if (evaluation?.quotaMode) {
+      setQuotaMode(true);
+      setQuotaModeReason(evaluation?.reason || 'Mode hemat AI aktif.');
+    }
+
     const strengthsText = normEval.strengths.map((s, idx) => `${idx + 1}) ${s}`).join('\n');
     const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
 
     const feedbackText = `Skor: ${normEval.score}.\n\nKekuatan:\n${strengthsText}\n\nPerlu Diperbaiki:\n${weaknessesText}\n\nSaran:\n${normEval.suggestion}`;
+
+    const speechStrengths = normEval.strengths
+      .slice(0, 2)
+      .map((item, index) => `${index + 1}. ${item}`)
+      .join('. ');
+
+    const speechWeaknesses = normEval.weaknesses
+      .slice(0, 2)
+      .map((item, index) => `${index + 1}. ${item}`)
+      .join('. ');
+
     const feedbackSpeechText =
-      normEval.speechText ||
-      `Skor ${normEval.score}. ${normEval.suggestion}`;
+      `Skor ${normEval.score}. ` +
+      `Kekuatan: ${speechStrengths || 'belum terlihat jelas'}. ` +
+      `Yang perlu diperbaiki: ${speechWeaknesses || 'tidak ada catatan utama'}. ` +
+      `Saran: ${normEval.suggestion}`;
 
     const fbItem: TranscriptItem = {
       id: Date.now().toString(),
@@ -459,10 +518,19 @@ export default function DefenseRoomPage() {
       feedback: feedbackText,
       speechText: feedbackSpeechText,
       score: normEval.score,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    addTranscript(fbItem, updatedSession);
+    const sessionAfterFeedback: DefenseSession = {
+      ...updatedSession,
+      transcript: [...updatedSession.transcript, fbItem],
+      quotaMode: Boolean(updatedSession.quotaMode || evaluation?.quotaMode),
+      quotaModeReason: evaluation?.reason || updatedSession.quotaModeReason || '',
+    };
+
+    setSession(sessionAfterFeedback);
+    saveActiveSession(sessionAfterFeedback);
+
     setSpokenText(feedbackText);
     setHasFeedback(true);
     setIsEvaluatingAnswer(false);
@@ -479,37 +547,43 @@ export default function DefenseRoomPage() {
 
   const handleNextQuestion = () => {
     if (!session || isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession) return;
+
     stopSpeaking();
 
     if (session.currentQuestionIndex + 1 >= session.research.questionCount) {
       executeFinishSession();
-    } else {
-      setChatInput('');
-      setHasFeedback(false);
-      hasUserAnsweredRef.current = false;
-
-      const updated = { ...session, currentQuestionIndex: session.currentQuestionIndex + 1 };
-      setSession(updated);
-      saveActiveSession(updated);
-
-      setCurrentQuestion(prev => prev ? { ...prev, locked: false } : null);
-
-      handleGenerateQuestion(updated);
+      return;
     }
+
+    setChatInput('');
+    setHasFeedback(false);
+    hasUserAnsweredRef.current = false;
+
+    const updated = {
+      ...session,
+      currentQuestionIndex: session.currentQuestionIndex + 1,
+    };
+
+    setSession(updated);
+    saveActiveSession(updated);
+
+    setCurrentQuestion((prev) => (prev ? { ...prev, locked: false } : null));
+
+    handleGenerateQuestion(updated);
   };
 
   const calculateAverageScore = (transcript: any[]): number => {
-    const feedbackItems = transcript.filter(t => t.type === 'feedback' && typeof t.score === 'number');
+    const feedbackItems = transcript.filter((t) => t.type === 'feedback' && typeof t.score === 'number');
+
     if (feedbackItems.length > 0) {
       const total = feedbackItems.reduce((sum, item) => sum + (item.score || 0), 0);
       const avg = Math.round(total / feedbackItems.length);
       return Math.max(0, Math.min(100, avg));
     }
 
-    const hasAnswers = transcript.some(t => t.type === 'answer');
-    if (hasAnswers) {
-      return 50;
-    }
+    const hasAnswers = transcript.some((t) => t.type === 'answer');
+    if (hasAnswers) return 50;
+
     return 0;
   };
 
@@ -529,6 +603,7 @@ export default function DefenseRoomPage() {
       const researchPayload = buildResearchPayload(latestSession.research);
 
       let finalEval;
+
       try {
         const res = await fetch('/api/ai/final-evaluation', {
           method: 'POST',
@@ -536,11 +611,12 @@ export default function DefenseRoomPage() {
           body: JSON.stringify({
             research: researchPayload,
             examinerMode: latestSession.research.examinerMode,
-            transcript: latestSession.transcript
-          })
+            transcript: latestSession.transcript,
+          }),
         });
 
         if (!res.ok) throw new Error('fallback');
+
         finalEval = await res.json();
       } catch (e) {
         console.warn('Fallback final eval');
@@ -551,17 +627,13 @@ export default function DefenseRoomPage() {
 
       let finalScore = Number(finalEval.score);
       if (isNaN(finalScore) || finalScore === 0) {
-        if (avgScore > 0) {
-          finalScore = avgScore;
-        } else {
-          finalScore = isNaN(finalScore) ? 0 : finalScore;
-        }
+        finalScore = avgScore > 0 ? avgScore : isNaN(finalScore) ? 0 : finalScore;
       }
 
       finalScore = Math.max(0, Math.min(100, finalScore));
       finalEval.score = finalScore;
 
-      const hasAnswers = latestSession.transcript.some(t => t.type === 'answer');
+      const hasAnswers = latestSession.transcript.some((t) => t.type === 'answer');
 
       if (hasAnswers) {
         saveHistoryItem({
@@ -579,16 +651,19 @@ export default function DefenseRoomPage() {
           transcript: latestSession.transcript,
           strengths: finalEval.strengths,
           weaknesses: finalEval.weaknesses,
-          nextPractice: finalEval.nextPractice || ['Terus berlatih']
+          nextPractice: finalEval.nextPractice || ['Terus berlatih'],
         });
 
-        localStorage.setItem('ruanguji_latest_eval', JSON.stringify({
-          score: finalScore,
-          summary: finalEval.summary,
-          strengths: finalEval.strengths,
-          weaknesses: finalEval.weaknesses,
-          nextPractice: finalEval.nextPractice || ['Terus berlatih']
-        }));
+        localStorage.setItem(
+          'ruanguji_latest_eval',
+          JSON.stringify({
+            score: finalScore,
+            summary: finalEval.summary,
+            strengths: finalEval.strengths,
+            weaknesses: finalEval.weaknesses,
+            nextPractice: finalEval.nextPractice || ['Terus berlatih'],
+          })
+        );
 
         clearActiveSession();
         navigate('/evaluation');
@@ -615,10 +690,10 @@ export default function DefenseRoomPage() {
 
   if (!session) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
-        <div className="card soft-shadow" style={{ padding: '4rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%', margin: '0 1rem', backgroundColor: 'var(--white)', borderRadius: '24px' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem' }}>Belum ada sesi aktif</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Mulai dari halaman persiapan untuk membuat simulasi sidang.</p>
+      <div className="defense-empty">
+        <div className="card soft-shadow defense-empty-card">
+          <h2>Belum ada sesi aktif</h2>
+          <p>Mulai dari halaman persiapan untuk membuat simulasi sidang.</p>
           <Link to="/setup" className="btn btn-primary">
             Siapkan Sidang
           </Link>
@@ -630,96 +705,103 @@ export default function DefenseRoomPage() {
   const { research, currentQuestionIndex } = session;
   const currentQ = currentQuestionIndex + 1;
 
-  const orbStateLabel = isGeneratingQuestion ? 'Menyiapkan' :
-    isEvaluatingAnswer ? 'Menganalisis jawaban' :
-      orbState === 'idle' ? 'Siap menguji' :
-        orbState === 'speaking' ? 'Sedang berbicara' :
-          orbState === 'listening' ? 'Mendengarkan' : 'Menganalisis';
+  const effectiveOrbState =
+    isVoiceListening
+      ? 'listening'
+      : isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession
+        ? 'thinking'
+        : orbState;
 
-  const activeQuestionItem = session.transcript.slice().reverse().find(t => t.type === 'question');
+  const botIsActive =
+    isGeneratingQuestion ||
+    isEvaluatingAnswer ||
+    isFinishingSession ||
+    isVoiceListening ||
+    effectiveOrbState === 'speaking' ||
+    effectiveOrbState === 'listening' ||
+    effectiveOrbState === 'thinking';
+
+  const botVisualState = botIsActive ? effectiveOrbState : 'idle';
+
+  const orbStateLabel = isVoiceListening
+    ? 'Mendengarkan jawaban'
+    : isGeneratingQuestion
+      ? 'Menyiapkan pertanyaan'
+      : isEvaluatingAnswer
+        ? 'Menilai jawaban'
+        : isFinishingSession
+          ? 'Menyusun evaluasi'
+          : effectiveOrbState === 'speaking'
+            ? 'Sedang berbicara'
+            : 'Siap menguji';
+
+  const quotaMessage = 'Mode hemat AI aktif karena kuota penuh.';
+  const aiDisclaimerMessage = 'RuangUji bisa keliru. Gunakan sebagai latihan, bukan penilaian final.';
+
+  const activeQuestionItem = session.transcript.slice().reverse().find((t) => t.type === 'question');
   const activeQuestion = activeQuestionItem ? activeQuestionItem.content : '';
 
   const finishingTitle = 'Menyusun Evaluasi Akhir';
   const finishingMessage =
     'Mohon tunggu sebentar. RuangUji sedang menyimpan transkrip, menghitung skor akhir, dan menyiapkan halaman evaluasi.';
 
-  const aiDisclaimerMessage =
-    'AI dapat membuat kesalahan atau kurang sesuai konteks. Gunakan hasil simulasi sebagai bahan latihan, bukan penilaian final.';
-
   return (
-    <div
-      className="defense-root"
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#f8fafc',
-        overflow: 'hidden'
-      }}
-    >
-      {/* Mobile Drawer Overlay */}
+    <div className="defense-root">
       <div
         className={`mobile-overlay ${showLeftDrawer || showRightDrawer ? 'open' : ''}`}
-        onClick={() => { setShowLeftDrawer(false); setShowRightDrawer(false); }}
-      ></div>
+        onClick={() => {
+          setShowLeftDrawer(false);
+          setShowRightDrawer(false);
+        }}
+      />
 
-      {/* Header Fullscreen Workspace */}
       <header className="defense-header">
         <div className="defense-header-inner">
-
-          {/* Left: Back */}
           <div className="defense-header-side defense-header-left">
-            <button
-              onClick={() => setShowBackModal(true)}
-              className="defense-back-btn"
-            >
+            <button onClick={() => setShowBackModal(true)} className="defense-back-btn">
               <ArrowLeft size={18} />
               <span className="defense-back-text">Kembali</span>
             </button>
 
-            <div className="defense-brand-separator"></div>
+            <div className="defense-brand-separator" />
 
             <div className="defense-brand">
-              <img
-                src={logoRuangUji}
-                alt="Logo RuangUji"
-                className="defense-brand-logo"
-              />
+              <img src={logoRuangUji} alt="Logo RuangUji" className="defense-brand-logo" />
               <span>RuangUji</span>
             </div>
           </div>
 
-          {/* Center: Title */}
           <div className="defense-header-title">
             <h1>Ruang Sidang</h1>
-            <p>Pertanyaan {currentQ} dari {research.questionCount}</p>
+            <p>
+              Pertanyaan {currentQ} dari {research.questionCount}
+            </p>
           </div>
 
-          {/* Right: Actions */}
           <div className="defense-header-side defense-header-right">
-            <span className="badge defense-desktop-only" style={{ backgroundColor: '#fef3c7', color: '#b45309', textTransform: 'capitalize' }}>
-              Mode: {research.examinerMode}
-            </span>
+            <span className="badge defense-desktop-only defense-mode-badge">Mode: {research.examinerMode}</span>
+            <span className="badge defense-desktop-only defense-duration-badge">Durasi: {research.sessionLength}</span>
 
-            <span className="badge defense-desktop-only" style={{ backgroundColor: 'var(--bg-soft)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
-              Durasi: {research.sessionLength}
-            </span>
-
-            <select
-              value={voiceProfile}
-              onChange={(e) => {
-                setVoiceProfile(e.target.value);
-                localStorage.setItem('ruanguji_voice_profile', e.target.value);
-              }}
-              className="badge defense-desktop-only"
-              style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}
+            <div
+              className="defense-desktop-only defense-voice-control"
+              title="Pilih gaya suara RuangUji"
             >
-              <option value="Tenang">Tenang</option>
-              <option value="Formal">Formal</option>
-              <option value="Hangat">Hangat</option>
-              <option value="Tegas">Tegas</option>
-              <option value="Cepat">Cepat</option>
-            </select>
+              <AudioLines size={15} />
+              <select
+                value={voiceProfile}
+                onChange={(e) => {
+                  setVoiceProfile(e.target.value);
+                  localStorage.setItem('ruanguji_voice_profile', e.target.value);
+                }}
+                aria-label="Pilih gaya suara RuangUji"
+              >
+                <option value="Tenang">Tenang</option>
+                <option value="Formal">Formal</option>
+                <option value="Hangat">Hangat</option>
+                <option value="Tegas">Tegas</option>
+                <option value="Cepat">Cepat</option>
+              </select>
+            </div>
 
             <button
               onClick={() => {
@@ -727,22 +809,16 @@ export default function DefenseRoomPage() {
               }}
               disabled={isFinishingSession}
               className="btn btn-secondary defense-end-btn"
-              style={{
-                opacity: isFinishingSession ? 0.65 : 1,
-                cursor: isFinishingSession ? 'wait' : 'pointer',
-              }}
             >
               {isFinishingSession ? 'Menyimpan...' : 'Akhiri Sesi'}
             </button>
           </div>
-
         </div>
       </header>
 
-      {/* Mobile Panel Switcher */}
       <div className="defense-mobile-tabs">
         <button
-          onClick={() => { setShowLeftDrawer(prev => !prev); }}
+          onClick={() => setShowLeftDrawer((prev) => !prev)}
           className={`defense-mobile-tab-btn ${showLeftDrawer ? 'active' : ''}`}
         >
           <Info size={14} />
@@ -750,7 +826,7 @@ export default function DefenseRoomPage() {
         </button>
 
         <button
-          onClick={() => { setShowRightDrawer(prev => !prev); }}
+          onClick={() => setShowRightDrawer((prev) => !prev)}
           className={`defense-mobile-tab-btn ${showRightDrawer ? 'active' : ''}`}
         >
           <FileText size={14} />
@@ -758,106 +834,44 @@ export default function DefenseRoomPage() {
         </button>
       </div>
 
-      {/* Body Workspace 3 Panel */}
       <main className="defense-workspace-grid">
-
-        {/* Panel 1: Info Penelitian */}
-        <div
-          className={`defense-panel-left defense-panel ${showLeftDrawer ? 'open' : ''}`}
-          style={{
-            border: '1px solid var(--border-color)',
-            borderRadius: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}
-        >
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className={`defense-panel-left defense-panel ${showLeftDrawer ? 'open' : ''}`}>
+          <div className="defense-panel-header">
             <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Informasi Latihan</p>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)' }}>Detail Penelitian</h3>
+              <p>Informasi Latihan</p>
+              <h3>Detail Penelitian</h3>
             </div>
-            {/* Close button for mobile */}
-            <button onClick={() => setShowLeftDrawer(false)} className="mobile-drawer-toggles" style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}>
+
+            <button onClick={() => setShowLeftDrawer(false)} className="mobile-drawer-toggles">
               <PanelLeftClose size={20} />
             </button>
           </div>
 
-          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Judul Penelitian</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>{research.title}</p>
-              </div>
-              <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Jenis Sidang</p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{research.sessionType}</p>
-              </div>
-              <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Bidang / Topik</p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{research.field || '-'}</p>
-              </div>
-              {research.keywords && (
-                <>
-                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                  <div>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                      Kata Kunci / Fokus
-                    </p>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                      {research.keywords}
-                    </p>
-                  </div>
-                </>
-              )}
+          <div className="custom-scrollbar defense-info-body">
+            <div className="defense-info-list">
+              <InfoBlock label="Judul Penelitian" value={research.title} strong />
+              <InfoBlock label="Jenis Sidang" value={research.sessionType} />
+              <InfoBlock label="Bidang / Topik" value={research.field || '-'} />
 
-              <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                  Pendekatan Penelitian
-                </p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                  {research.researchApproach || '-'}
-                </p>
-              </div>
-              <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Metode</p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{research.method}</p>
-              </div>
+              {research.keywords && <InfoBlock label="Kata Kunci / Fokus" value={research.keywords} />}
+
+              <InfoBlock label="Pendekatan Penelitian" value={research.researchApproach || '-'} />
+              <InfoBlock label="Metode" value={research.method} />
 
               {research.documentName && (
-                <>
-                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                  <div>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                      Dokumen Diunggah
-                    </p>
-                    <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {research.documentName}
-                    </p>
-                    <p style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '0.25rem', fontWeight: 600 }}>
-                      Digunakan sebagai konteks AI
-                    </p>
-                  </div>
-                </>
+                <InfoBlock
+                  label="Dokumen Diunggah"
+                  value={research.documentName}
+                  helper="Digunakan sebagai konteks AI"
+                  strong
+                />
               )}
 
-              {research.concern && (
-                <>
-                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                  <div>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Concern (Kekhawatiran)</p>
-                    <p style={{ fontSize: '0.875rem', color: '#ea580c' }}>{research.concern}</p>
-                  </div>
-                </>
-              )}
+              {research.concern && <InfoBlock label="Concern / Kekhawatiran" value={research.concern} danger />}
 
-              <div style={{ marginTop: '0.5rem' }}>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Abstrak</p>
-                <div className="custom-scrollbar" style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '16px', maxHeight: '220px', overflowY: 'auto', fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6, border: '1px solid var(--border-color)' }}>
+              <div>
+                <p className="defense-info-label">Abstrak</p>
+                <div className="custom-scrollbar defense-abstract-box">
                   {research.abstract || 'Belum ada abstrak.'}
                 </div>
               </div>
@@ -865,323 +879,153 @@ export default function DefenseRoomPage() {
           </div>
         </div>
 
-        {/* Panel 2: Obrolan / Voice Stage */}
-        <div
-          className="defense-panel-main defense-panel"
-          style={{
-            backgroundColor: 'var(--white)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}
-        >
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-soft)' }}>
-            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="defense-panel-main defense-panel">
+          <div className="defense-main-header">
+            <p>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
+
+            <div className="defense-main-header-actions">
               <button
                 onClick={toggleVoice}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '4px 10px',
-                  borderRadius: '16px',
-                  backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  transition: 'all 0.2s',
-                  outline: 'none'
-                }}
-                title={voiceEnabled ? "Mute Suara AI" : "Unmute Suara AI"}
+                className={`defense-audio-pill ${voiceEnabled ? 'active' : ''}`}
+                title={voiceEnabled ? 'Mute Suara AI' : 'Unmute Suara AI'}
               >
                 {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
                 <span>{voiceEnabled ? 'Suara AI Aktif' : 'Mute'}</span>
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: orbState === 'idle' ? '#94a3b8' : 'var(--primary-blue)', animation: orbState !== 'idle' ? 'orbPulse 2s infinite' : 'none' }}></div>
-                <p
-                  style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    color: orbState === 'idle' ? 'var(--text-secondary)' : 'var(--primary-blue)',
-                    whiteSpace: 'nowrap',
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {orbStateLabel}
-                </p>
+              <div className="defense-status-pill">
+                <span className={orbState !== 'idle' ? 'active' : ''} />
+                <p>{orbStateLabel}</p>
               </div>
             </div>
           </div>
 
-          <div ref={middleScrollRef} className="custom-scrollbar defense-center-scroll" style={{ flex: 1, overflowY: 'auto', padding: isVoiceMode ? '0' : '24px', display: 'flex', flexDirection: 'column', alignItems: isVoiceMode ? 'center' : 'stretch', gap: isVoiceMode ? '0' : '20px', scrollBehavior: 'smooth' }}>
-            {!isVoiceMode && (
-              <div
-                className="fade-up"
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.65rem',
-                  padding: '0.75rem 0.9rem',
-                  borderRadius: '16px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.78rem',
-                  lineHeight: 1.5,
-                  marginBottom: '0.25rem',
-                }}
-              >
-                <Info
-                  size={15}
-                  style={{
-                    color: 'var(--primary-blue)',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                  }}
-                />
-                <span>{aiDisclaimerMessage}</span>
-              </div>
-            )}
-
-            {isVoiceMode ? (
-              // VOICE STAGE UI
-              <div className="fade-up voice-stage-container" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '16px' }}>
-                <div
-                  style={{
-                    width: '92%',
-                    maxWidth: '78%',
-                    margin: '14px auto 0',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.5rem',
-                    padding: '0.65rem 0.8rem',
-                    borderRadius: '14px',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.74rem',
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <Info
-                    size={14}
-                    style={{
-                      color: 'var(--primary-blue)',
-                      flexShrink: 0,
-                      marginTop: '2px',
-                    }}
-                  />
-                  <span>{aiDisclaimerMessage}</span>
-                </div>
-                {isGeneratingQuestion ? (
-                  <div className="voice-question-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #cbd5e1', borderTopColor: 'var(--primary-blue)', animation: 'spin 0.8s linear infinite' }}></div>
-                    <p style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>Menyiapkan pertanyaan...</p>
-                  </div>
-                ) : isEvaluatingAnswer ? (
-                  <div className="voice-question-card" style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #bfdbfe', borderTopColor: '#1e3a8a', animation: 'spin 0.8s linear infinite' }}></div>
-                    <p style={{ fontSize: '15px', color: '#1e3a8a' }}>Menganalisis jawaban...</p>
-                  </div>
-                ) : activeQuestion ? (
-                  <div className="voice-question-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', padding: '14px 18px', borderRadius: '18px', width: '92%', maxWidth: '78%', textAlign: 'center', margin: '16px auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                    <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>Pertanyaan Aktif</p>
-                    <p className="voice-question-text" style={expandedItems[activeQuestionItem?.id || ''] ? {
-                      fontSize: '15px',
-                      color: 'var(--text-primary)',
-                      lineHeight: 1.55,
-                      whiteSpace: 'pre-wrap'
-                    } : {
-                      fontSize: '15px',
-                      color: 'var(--text-primary)',
-                      lineHeight: 1.55,
-                      display: '-webkit-box',
-                      WebkitBoxOrient: 'vertical',
-                      WebkitLineClamp: 3,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}>{activeQuestion}</p>
-                    {activeQuestion.length > 130 && (
-                      <button onClick={() => toggleItemExpand(activeQuestionItem?.id || '')} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '6px', padding: 0 }}>
-                        {expandedItems[activeQuestionItem?.id || ''] ? 'Sembunyikan' : 'Lihat lengkap'}
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-
-                <div className="voice-blob-wrapper" style={{ margin: '48px 0 22px 0', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                  <RuangUjiBot state={orbState} size={window.innerWidth < 520 ? 180 : 230} />
-                </div>
-
-              </div>
-            ) : (
-              // TEXT/CHAT UI
-              <>
-                {session.transcript.map((item) => {
-                  if (item.type === 'question') {
-                    return (
-                      <div key={item.id} className="fade-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                            <Bot size={16} color="var(--text-muted)" />
-                            <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Penguji</p>
-                          </div>
-                          <p style={expandedItems[item.id] ? {
-                            color: '#0f172a',
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            whiteSpace: 'pre-wrap'
-                          } : {
-                            color: '#0f172a',
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            display: '-webkit-box',
-                            WebkitBoxOrient: 'vertical',
-                            WebkitLineClamp: 4,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>{item.content}</p>
-                          {item.content.length > 200 && (
-                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: 'var(--primary-blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
-                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (item.type === 'feedback') {
-                    return (
-                      <div key={item.id} className="fade-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <Bot size={16} color="#15803d" />
-                              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803d' }}>Umpan Balik</p>
-                            </div>
-                            {item.score !== undefined && (
-                              <span className="badge" style={{ backgroundColor: 'var(--white)', padding: '0.125rem 0.5rem', fontSize: '0.75rem', color: '#15803d', fontWeight: 700, border: '1px solid #bbf7d0' }}>Skor: {item.score}</span>
-                            )}
-                          </div>
-                          <p style={expandedItems[item.id] ? {
-                            color: '#166534',
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            whiteSpace: 'pre-wrap'
-                          } : {
-                            color: '#166534',
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            display: '-webkit-box',
-                            WebkitBoxOrient: 'vertical',
-                            WebkitLineClamp: 4,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>{item.content}</p>
-                          {item.content.length > 200 && (
-                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
-                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (item.type === 'answer') {
-                    return (
-                      <div key={item.id} className="fade-up" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <div style={{ backgroundColor: '#2563eb', color: 'var(--white)', padding: '1rem 1.25rem', borderRadius: '20px 20px 4px 20px', maxWidth: '78%' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>Anda</p>
-                          </div>
-                          <p style={expandedItems[item.id] ? {
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            whiteSpace: 'pre-wrap'
-                          } : {
-                            lineHeight: 1.6,
-                            fontSize: '0.9375rem',
-                            display: '-webkit-box',
-                            WebkitBoxOrient: 'vertical',
-                            WebkitLineClamp: 4,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>{item.content}</p>
-                          {item.content.length > 200 && (
-                            <button onClick={() => toggleItemExpand(item.id)} style={{ background: 'none', border: 'none', color: '#bfdbfe', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem', padding: 0 }}>
-                              {expandedItems[item.id] ? 'Sembunyikan' : 'Lihat lengkap'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
-
-                {isGeneratingQuestion && (
-                  <div className="fade-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #cbd5e1', borderTopColor: 'var(--primary-blue)', animation: 'spin 0.8s linear infinite' }}></div>
-                      <p style={{ fontSize: '0.9375rem', color: 'var(--text-secondary)' }}>Menyiapkan pertanyaan...</p>
-                    </div>
-                  </div>
-                )}
-
-                {isEvaluatingAnswer && (
-                  <div className="fade-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '1rem 1.25rem', borderRadius: '20px 20px 20px 4px', maxWidth: '78%', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #bfdbfe', borderTopColor: '#1e3a8a', animation: 'spin 0.8s linear infinite' }}></div>
-                      <p style={{ fontSize: '0.9375rem', color: '#1e3a8a' }}>Menganalisis jawaban...</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Next Question Button inside Chat flow */}
-                {hasFeedback && !isVoiceMode && (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem', paddingBottom: '1rem' }}>
-                    <button
-                      className="btn btn-primary fade-up"
-                      onClick={handleNextQuestion}
-                      disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
-                      style={{
-                        padding: '0.875rem 2rem',
-                        fontSize: '0.9375rem',
-                        borderRadius: '999px',
-                        boxShadow: '0 4px 14px 0 rgba(37,99,235,0.39)',
-                        opacity: isFinishingSession ? 0.75 : 1,
-                        cursor: isFinishingSession ? 'wait' : 'pointer',
-                      }}
-                    >
-                      {isFinishingSession
-                        ? 'Menyusun Evaluasi...'
-                        : currentQ >= research.questionCount
-                          ? 'Selesai & Lihat Evaluasi'
-                          : 'Lanjut ke Pertanyaan Berikutnya'}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+          <div className="defense-mobile-bot-strip">
+            <RuangUjiBot state={botVisualState} size={46} />
+            <div>
+              <strong>{orbStateLabel}</strong>
+              <span>
+                {isVoiceMode
+                  ? 'Mode voice aktif. Jawab dengan suara saat siap.'
+                  : 'Mode chat aktif. Ketik jawaban Anda.'}
+              </span>
+            </div>
           </div>
 
-          {/* Action Bar / Input Footer */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--white)' }}>
+          <div className={`defense-main-content ${isVoiceMode ? 'voice-layout' : 'chat-layout'}`}>
+            <div ref={middleScrollRef} className="custom-scrollbar defense-center-scroll">
+              {quotaMode && !isVoiceMode && (
+                <div className="defense-warning-card quota">
+                  <Info size={15} />
+                  <span>{quotaMessage}</span>
+                </div>
+              )}
 
+              {isVoiceMode ? (
+                <div className="fade-up voice-stage-container">
+                  {isGeneratingQuestion ? (
+                    <VoiceQuestionState text="Menyiapkan pertanyaan..." />
+                  ) : isEvaluatingAnswer ? (
+                    <VoiceQuestionState text="Menganalisis jawaban..." blue />
+                  ) : activeQuestion ? (
+                    <div className="voice-question-card">
+                      <p className="voice-question-label">Pertanyaan Aktif</p>
+                      <p className={expandedItems[activeQuestionItem?.id || ''] ? 'voice-question-text open' : 'voice-question-text'}>
+                        {activeQuestion}
+                      </p>
+
+                      {activeQuestion.length > 130 && (
+                        <button onClick={() => toggleItemExpand(activeQuestionItem?.id || '')} className="text-link-btn">
+                          {expandedItems[activeQuestionItem?.id || ''] ? 'Sembunyikan' : 'Lihat lengkap'}
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  {session.transcript.map((item) => {
+                    if (item.type === 'question') {
+                      return (
+                        <ChatBubble
+                          key={item.id}
+                          item={item}
+                          role="question"
+                          expanded={Boolean(expandedItems[item.id])}
+                          onToggle={() => toggleItemExpand(item.id)}
+                        />
+                      );
+                    }
+
+                    if (item.type === 'feedback') {
+                      return (
+                        <ChatBubble
+                          key={item.id}
+                          item={item}
+                          role="feedback"
+                          expanded={Boolean(expandedItems[item.id])}
+                          onToggle={() => toggleItemExpand(item.id)}
+                        />
+                      );
+                    }
+
+                    if (item.type === 'answer') {
+                      return (
+                        <ChatBubble
+                          key={item.id}
+                          item={item}
+                          role="answer"
+                          expanded={Boolean(expandedItems[item.id])}
+                          onToggle={() => toggleItemExpand(item.id)}
+                        />
+                      );
+                    }
+
+                    return null;
+                  })}
+
+                  {isGeneratingQuestion && (
+                    <div className="fade-up chat-loading-bubble">
+                      <Loader2 size={16} />
+                      <p>Menyiapkan pertanyaan...</p>
+                    </div>
+                  )}
+
+                  {isEvaluatingAnswer && (
+                    <div className="fade-up chat-loading-bubble evaluating">
+                      <Loader2 size={16} />
+                      <span>RuangUji sedang memikirkan dan menilai jawaban Anda...</span>
+                    </div>
+                  )}
+
+                  {hasFeedback && (
+                    <div className="next-question-wrap">
+                      <button
+                        className="btn btn-primary fade-up defense-next-wide"
+                        onClick={handleNextQuestion}
+                        disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
+                      >
+                        {isFinishingSession
+                          ? 'Menyusun Evaluasi...'
+                          : currentQ >= research.questionCount
+                            ? 'Selesai & Lihat Evaluasi'
+                            : 'Lanjut ke Pertanyaan Berikutnya'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="defense-footer-input">
             {isVoiceMode ? (
-              // VOICE MODE CONTROLS
               <div className="defense-action-row">
                 <button
-                  onClick={() => setIsVoiceMode(false)}
-                  disabled={isGeneratingQuestion || isEvaluatingAnswer}
+                  onClick={() => {
+                    setIsVoiceMode(false);
+                  }}
+                  disabled={isFinishingSession}
                   className="btn btn-secondary defense-mode-btn"
                 >
                   Kembali ke Chat
@@ -1193,10 +1037,6 @@ export default function DefenseRoomPage() {
                       className="btn btn-primary fade-up defense-next-btn"
                       onClick={handleNextQuestion}
                       disabled={isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession}
-                      style={{
-                        opacity: isFinishingSession ? 0.75 : 1,
-                        cursor: isFinishingSession ? 'wait' : 'pointer',
-                      }}
                     >
                       {isFinishingSession
                         ? 'Menyusun...'
@@ -1211,27 +1051,35 @@ export default function DefenseRoomPage() {
                         onSubmit={handleAnswerSubmit}
                         disabled={orbState !== 'idle' && orbState !== 'listening'}
                         isThinking={orbState === 'thinking'}
-                        autoMode={true}
+                        autoMode
+                        onListeningChange={(listening) => {
+                          setIsVoiceListening(listening);
+
+                          if (listening) {
+                            stopSpeaking();
+                            setOrbState('listening');
+                            return;
+                          }
+
+                          if (!isGeneratingQuestion && !isEvaluatingAnswer && !isFinishingSession) {
+                            setOrbState('idle');
+                          }
+                        }}
                       />
                     </div>
                   )}
 
                   <button
                     onClick={toggleVoice}
-                    className="defense-circle-btn"
+                    className={`defense-circle-btn ${voiceEnabled ? 'voice-on' : 'voice-off'}`}
                     title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
-                    style={{
-                      backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
-                      color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
-                    }}
                   >
                     {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                   </button>
                 </div>
               </div>
             ) : (
-              // CHAT MODE INPUT
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', backgroundColor: 'var(--bg-soft)', padding: '0.5rem', borderRadius: '24px', border: '1px solid var(--border-color)' }}>
+              <div className="defense-chat-input-shell">
                 <textarea
                   className="custom-scrollbar"
                   rows={Math.min(chatInput.split('\n').length || 1, 4)}
@@ -1244,17 +1092,6 @@ export default function DefenseRoomPage() {
                     }
                   }}
                   disabled={hasFeedback || orbState === 'thinking' || isGeneratingQuestion || isEvaluatingAnswer}
-                  style={{
-                    flex: 1,
-                    resize: 'none',
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.9375rem',
-                    outline: 'none',
-                    color: 'var(--text-primary)',
-                    maxHeight: '120px'
-                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -1263,7 +1100,7 @@ export default function DefenseRoomPage() {
                   }}
                 />
 
-                <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.25rem', paddingRight: '0.5rem' }}>
+                <div className="defense-input-actions">
                   {chatInput.trim() ? (
                     <button
                       onClick={() => handleAnswerSubmit(chatInput)}
@@ -1271,19 +1108,14 @@ export default function DefenseRoomPage() {
                       className="defense-circle-btn defense-send-btn"
                       title="Kirim jawaban"
                     >
-                      <Send size={16} style={{ marginLeft: '2px' }} />
+                      <Send size={16} />
                     </button>
                   ) : (
                     <button
                       onClick={() => setIsVoiceMode(true)}
                       disabled={isGeneratingQuestion || isEvaluatingAnswer}
-                      className="defense-circle-btn"
+                      className="defense-circle-btn voice-on"
                       title="Masuk Voice Stage"
-                      style={{
-                        backgroundColor: 'var(--blue-soft)',
-                        color: 'var(--primary-blue)',
-                        border: 'none',
-                      }}
                     >
                       <Speech size={16} />
                     </button>
@@ -1291,135 +1123,78 @@ export default function DefenseRoomPage() {
 
                   <button
                     onClick={toggleVoice}
-                    className="defense-circle-btn"
+                    className={`defense-circle-btn ${voiceEnabled ? 'voice-on' : 'voice-off'}`}
                     title={voiceEnabled ? 'Mute Suara AI' : 'Aktifkan Suara AI'}
-                    style={{
-                      backgroundColor: voiceEnabled ? 'rgba(37, 99, 235, 0.08)' : 'rgba(148, 163, 184, 0.08)',
-                      color: voiceEnabled ? 'var(--primary-blue)' : 'var(--text-muted)',
-                    }}
                   >
                     {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                   </button>
                 </div>
               </div>
             )}
+
+            <p className="defense-bottom-disclaimer">
+              {aiDisclaimerMessage}
+            </p>
           </div>
         </div>
 
-        {/* Panel 3: Transkrip Sesi */}
-        <div
-          className={`defense-panel-right defense-panel ${showRightDrawer ? 'open' : ''}`}
-          style={{
-            border: '1px solid var(--border-color)',
-            borderRadius: '24px',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>Transkrip Sesi</p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Riwayat lengkap obrolan</p>
+        <div className={`defense-panel-right defense-panel ${showRightDrawer ? 'open' : ''}`}>
+          <div className="defense-side-bot-card">
+            <div className={`defense-side-bot-stage ${botIsActive ? 'active' : ''}`}>
+              <div className="defense-ai-orbit orbit-large" />
+              <div className="defense-ai-orbit orbit-small" />
+
+              <RuangUjiBot state={botVisualState} size={118} />
+
+              {botIsActive && (
+                <div className="defense-ai-dots">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              )}
             </div>
-            {/* Close button for mobile */}
-            <button onClick={() => setShowRightDrawer(false)} className="mobile-drawer-toggles" style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}>
+
+            <div className="defense-side-bot-caption">
+              <strong>{orbStateLabel}</strong>
+              <span>
+                {isVoiceMode ? 'Mode voice aktif.' : 'Mode chat aktif.'}
+              </span>
+            </div>
+          </div>
+
+          <div className="defense-panel-header transcript-header">
+            <div>
+              <p>Transkrip Sesi</p>
+              <span>Riwayat lengkap obrolan</span>
+            </div>
+
+            <button onClick={() => setShowRightDrawer(false)} className="mobile-drawer-toggles">
               <PanelRightClose size={20} />
             </button>
           </div>
-          <SessionTranscript transcript={session.transcript} />
-        </div>
 
+          <div className="defense-transcript-body">
+            <SessionTranscript transcript={session.transcript} />
+          </div>
+        </div>
       </main>
 
       {isFinishingSession && (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-label="Menyusun evaluasi akhir"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9998,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-            backgroundColor: 'rgba(15, 23, 42, 0.52)',
-            backdropFilter: 'blur(5px)',
-          }}
-        >
-          <div
-            className="fade-up"
-            style={{
-              width: '100%',
-              maxWidth: 440,
-              backgroundColor: 'var(--white)',
-              borderRadius: 28,
-              padding: '1.5rem',
-              border: '1px solid rgba(226, 232, 240, 0.9)',
-              boxShadow: '0 30px 80px rgba(15, 23, 42, 0.28)',
-              textAlign: 'center',
-            }}
-          >
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: 999,
-                margin: '0 auto 1rem auto',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#eff6ff',
-                color: 'var(--primary-blue)',
-                border: '1px solid #bfdbfe',
-              }}
-            >
-              <Loader2 size={30} style={{ animation: 'spin 0.85s linear infinite' }} />
+        <div role="status" aria-live="polite" aria-label="Menyusun evaluasi akhir" className="finishing-overlay">
+          <div className="fade-up finishing-card">
+            <div className="finishing-icon">
+              <Loader2 size={30} />
             </div>
 
-            <h3
-              style={{
-                fontSize: '1.125rem',
-                fontWeight: 800,
-                color: 'var(--text-primary)',
-                marginBottom: '0.5rem',
-              }}
-            >
-              {finishingTitle}
-            </h3>
+            <h3>{finishingTitle}</h3>
+            <p>{finishingMessage}</p>
 
-            <p
-              style={{
-                fontSize: '0.92rem',
-                color: 'var(--text-secondary)',
-                lineHeight: 1.6,
-                margin: '0 auto 1rem auto',
-                maxWidth: 360,
-              }}
-            >
-              {finishingMessage}
-            </p>
-
-            <div
-              style={{
-                padding: '0.8rem 1rem',
-                borderRadius: 16,
-                backgroundColor: '#f8fafc',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-muted)',
-                fontSize: '0.82rem',
-                lineHeight: 1.5,
-              }}
-            >
-              Jangan tutup halaman ini sampai proses selesai.
-            </div>
+            <div className="finishing-note">Jangan tutup halaman ini sampai proses selesai.</div>
           </div>
         </div>
       )}
 
-      {/* Modals */}
       <ConfirmModal
         isOpen={showBackModal}
         title="Keluar dari ruang sidang?"
@@ -1456,466 +1231,87 @@ export default function DefenseRoomPage() {
         content={detailModalContent.content}
         onClose={() => setDetailModalOpen(false)}
       />
-
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .defense-header {
-          height: 72px;
-          flex-shrink: 0;
-          background-color: var(--white);
-          border-bottom: 1px solid var(--border-color);
-          display: flex;
-          align-items: center;
-          padding: 0 16px;
-          z-index: 60;
-          position: relative;
-        }
-
-        .defense-header-inner {
-          width: 100%;
-          display: grid;
-          grid-template-columns: 1fr auto 1fr;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .defense-header-side {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          min-width: 0;
-        }
-
-        .defense-header-left {
-          justify-content: flex-start;
-        }
-
-        .defense-header-right {
-          justify-content: flex-end;
-        }
-
-        .defense-back-btn {
-          background: none;
-          border: none;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.9375rem;
-          font-weight: 600;
-          color: var(--text-secondary);
-          cursor: pointer;
-          padding: 0.4rem 0.25rem;
-          white-space: nowrap;
-        }
-
-        .defense-brand-separator {
-          width: 1px;
-          height: 24px;
-          background-color: var(--border-color);
-        }
-
-        .defense-brand {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.55rem;
-          font-weight: 800;
-          color: var(--primary-blue);
-          min-width: 0;
-        }
-
-        .defense-brand-logo {
-          width: 30px;
-          height: 30px;
-          object-fit: contain;
-          display: block;
-          flex-shrink: 0;
-        }
-
-        .defense-brand span {
-          white-space: nowrap;
-        }
-
-        .defense-header-title {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          min-width: 120px;
-        }
-
-        .defense-header-title h1 {
-          font-size: 1rem;
-          font-weight: 800;
-          color: var(--text-primary);
-          margin: 0 0 0.125rem 0;
-          line-height: 1.1;
-        }
-
-        .defense-header-title p {
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-          margin: 0;
-          line-height: 1.2;
-        }
-
-        .defense-end-btn {
-          background-color: #fee2e2 !important;
-          color: #b91c1c !important;
-          border-color: #fca5a5 !important;
-          padding: 0.375rem 0.75rem !important;
-          font-size: 0.875rem !important;
-          white-space: nowrap;
-        }
-
-        .defense-action-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.75rem;
-        }
-
-        .defense-action-right {
-          display: flex;
-          align-items: center;
-          justify-content: flex-end;
-          gap: 0.5rem;
-          min-width: 0;
-        }
-
-        .defense-mode-btn {
-          padding: 0.55rem 0.95rem !important;
-          border-radius: 999px !important;
-          font-size: 0.82rem !important;
-          white-space: nowrap;
-        }
-
-        .defense-next-btn {
-          padding: 0.55rem 1.15rem !important;
-          font-size: 0.82rem !important;
-          border-radius: 999px !important;
-          box-shadow: 0 4px 14px 0 rgba(37,99,235,0.32);
-          white-space: nowrap;
-        }
-
-        .defense-circle-btn {
-          width: 36px;
-          height: 36px;
-          border-radius: 999px;
-          border: 1px solid var(--border-color);
-          background-color: var(--white);
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-
-        .defense-circle-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-        }
-
-        .defense-circle-btn:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-        }
-
-        .defense-send-btn {
-          background-color: var(--primary-blue);
-          color: var(--white);
-          border: none;
-          box-shadow: 0 2px 8px rgba(37,99,235,0.3);
-        }
-
-        .voice-answer-compact {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .voice-answer-compact button {
-          padding: 0.55rem 1.05rem !important;
-          min-height: 40px !important;
-          border-radius: 999px !important;
-          font-size: 0.82rem !important;
-          line-height: 1.1 !important;
-          gap: 0.4rem !important;
-        }
-
-        .voice-answer-compact svg {
-          width: 16px !important;
-          height: 16px !important;
-        }
-
-        .defense-mobile-tabs {
-          display: none;
-        }
-
-        .defense-mobile-tab-btn.active {
-          background-color: var(--primary-blue);
-          color: var(--white);
-        }
-
-        .defense-workspace-grid {
-          flex: 1;
-          padding: 20px;
-          overflow: hidden;
-        }
-
-        @media (max-width: 991px) {
-          .defense-root {
-            background-color: var(--white) !important;
-          }
-
-          .defense-header {
-            height: 72px;
-            padding: 0 10px;
-          }
-
-          .defense-header-inner {
-            grid-template-columns: auto 1fr auto;
-            gap: 0.5rem;
-          }
-
-          .defense-brand-separator,
-          .defense-back-text,
-          .defense-desktop-only {
-            display: none !important;
-          }
-
-          .defense-brand {
-            display: inline-flex !important;
-            align-items: center;
-            gap: 0;
-            flex-shrink: 0;
-          }
-
-          .defense-brand span {
-            display: none !important;
-          }
-
-          .defense-brand-logo {
-            width: 28px;
-            height: 28px;
-          }
-
-          .defense-back-btn {
-            width: 36px;
-            height: 36px;
-            justify-content: center;
-            padding: 0;
-            border-radius: 999px;
-            color: var(--text-secondary);
-          }
-
-          .defense-header-title h1 {
-            font-size: 0.95rem;
-          }
-
-          .defense-header-title p {
-            font-size: 0.7rem;
-          }
-
-          .defense-end-btn {
-            padding: 0.45rem 0.7rem !important;
-            font-size: 0.78rem !important;
-            border-radius: 0.65rem !important;
-          }
-
-          .defense-mobile-tabs {
-            height: 44px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0 12px;
-            background-color: var(--white);
-            border-bottom: 1px solid var(--border-color);
-            z-index: 50;
-            position: relative;
-          }
-
-          .defense-mobile-tab-btn {
-            border: none;
-            background-color: var(--bg-soft);
-            color: var(--text-secondary);
-            border-radius: 999px;
-            padding: 0.4rem 0.75rem;
-            font-size: 0.72rem;
-            font-weight: 600;
-            letter-spacing: 0.03em;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            cursor: pointer;
-          }
-
-          .defense-workspace-grid {
-            padding: 0 !important;
-            flex: 1;
-            overflow: hidden;
-            display: block !important;
-          }
-
-          .defense-panel-main {
-            width: 100% !important;
-            height: 100% !important;
-            border-radius: 0 !important;
-            border-left: none !important;
-            border-right: none !important;
-            border-bottom: none !important;
-          }
-
-          .defense-panel-main > div:first-child {
-            border-radius: 0 !important;
-          }
-
-          .defense-panel {
-            border-radius: 0 !important;
-          }
-
-          .defense-panel-left,
-          .defense-panel-right {
-            position: fixed !important;
-            top: 116px !important;
-            bottom: 0 !important;
-            height: auto !important;
-            width: min(86vw, 340px) !important;
-            max-width: 340px !important;
-            background-color: var(--white) !important;
-            z-index: 55 !important;
-            border-radius: 0 !important;
-            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
-            transition: transform 0.25s ease;
-          }
-
-          .defense-panel-left {
-            left: 0 !important;
-            transform: translateX(-105%);
-            border-left: none !important;
-          }
-
-          .defense-panel-right {
-            right: 0 !important;
-            transform: translateX(105%);
-            border-right: none !important;
-          }
-
-          .defense-panel-left.open {
-            transform: translateX(0);
-          }
-
-          .defense-panel-right.open {
-            transform: translateX(0);
-          }
-
-          .mobile-overlay {
-            position: fixed !important;
-            top: 116px !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            background-color: rgba(15, 23, 42, 0.38) !important;
-            z-index: 54 !important;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s ease;
-            backdrop-filter: blur(4px);
-          }
-
-          .mobile-overlay.open {
-            opacity: 1;
-            pointer-events: auto;
-          }
-
-          .defense-center-scroll {
-            padding: 18px !important;
-          }
-
-          .defense-center-scroll > div {
-            max-width: 100%;
-          }
-
-          .defense-panel-main [style*="padding: 16px 24px"] {
-            padding-left: 18px !important;
-            padding-right: 18px !important;
-          }
-
-          .defense-action-row {
-            gap: 0.5rem;
-          }
-
-          .defense-mode-btn {
-            padding: 0.5rem 0.75rem !important;
-            font-size: 0.78rem !important;
-          }
-
-          .defense-next-btn,
-          .voice-answer-compact button {
-            padding: 0.5rem 0.85rem !important;
-            font-size: 0.78rem !important;
-          }
-
-          .defense-circle-btn {
-            width: 34px;
-            height: 34px;
-          }
-        }
-
-        @media (max-width: 520px) {
-          .defense-header {
-            height: 72px;
-            padding: 0 8px;
-          }
-
-          .defense-brand-logo {
-            width: 26px;
-            height: 26px;
-          }
-
-          .defense-header-title h1 {
-            font-size: 0.9rem;
-          }
-
-          .defense-header-title p {
-            font-size: 0.67rem;
-          }
-
-          .defense-end-btn {
-            padding: 0.45rem 0.65rem !important;
-            font-size: 0.74rem !important;
-          }
-
-          .defense-mobile-tabs {
-            height: 42px;
-            padding: 0 8px;
-          }
-
-          .defense-mobile-tab-btn {
-            font-size: 0.68rem;
-            padding: 0.38rem 0.65rem;
-          }
-
-          .defense-panel-left,
-          .defense-panel-right {
-            top: 114px !important;
-            width: 86vw !important;
-          }
-
-          .mobile-overlay {
-            top: 114px !important;
-          }
-
-          .defense-center-scroll {
-            padding: 16px !important;
-          }
-        }
-      `}</style>
+    </div>
+  );
+}
+
+function InfoBlock({
+  label,
+  value,
+  helper,
+  strong = false,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+  strong?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className="defense-info-block">
+      <p className="defense-info-label">{label}</p>
+      <p className={`defense-info-value ${strong ? 'strong' : ''} ${danger ? 'danger' : ''}`}>{value}</p>
+      {helper && <p className="defense-info-helper">{helper}</p>}
+    </div>
+  );
+}
+
+function VoiceQuestionState({ text, blue = false }: { text: string; blue?: boolean }) {
+  return (
+    <div className={`voice-question-card loading ${blue ? 'blue' : ''}`}>
+      <Loader2 size={16} />
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function ChatBubble({
+  item,
+  role,
+  expanded,
+  onToggle,
+}: {
+  item: TranscriptItem;
+  role: 'question' | 'answer' | 'feedback';
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const isAnswer = role === 'answer';
+  const isFeedback = role === 'feedback';
+  const shouldShowToggle = item.content.length > 200;
+
+  return (
+    <div className={`fade-up chat-row ${isAnswer ? 'right' : 'left'}`}>
+      <div className={`chat-bubble ${role}`}>
+        {isFeedback ? (
+          <div className="chat-label feedback-label">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Bot size={16} color="#15803d" />
+              <span>Umpan Balik</span>
+            </div>
+
+            {item.score !== undefined && <span className="chat-score">Skor: {item.score}</span>}
+          </div>
+        ) : isAnswer ? (
+          <div className="chat-label answer-label">
+            <span>Anda</span>
+          </div>
+        ) : (
+          <div className="chat-label">
+            <Bot size={16} color="var(--text-muted)" />
+            <span>Penguji</span>
+          </div>
+        )}
+
+        <p className={`chat-content ${expanded ? '' : 'collapsed'}`}>{item.content}</p>
+
+        {shouldShowToggle && (
+          <button onClick={onToggle} className="chat-toggle-btn">
+            {expanded ? 'Sembunyikan' : 'Lihat lengkap'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

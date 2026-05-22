@@ -75,6 +75,8 @@ export interface QuestionBankItem {
   category: string;
   provider?: string;
   modelUsed?: string;
+  fallbackReason?: string;
+  quotaMode?: boolean;
 }
 
 export interface DefenseSession {
@@ -87,6 +89,8 @@ export interface DefenseSession {
   createdAt: string;
   finishedAt?: string;
   questionBank?: QuestionBankItem[];
+  quotaMode?: boolean;
+  quotaModeReason?: string;
 }
 
 export interface HistoryItem {

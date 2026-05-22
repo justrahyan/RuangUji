@@ -464,7 +464,7 @@ export async function generateDefenseQuestionsBatchAI(payload: any) {
 
   const examinerMode = payload?.examinerMode || research.examinerMode || "kritis";
   const startIndex = Number(payload?.questionIndex || 0);
-  const batchSize = normalizeBatchSize(payload?.batchSize || 5);
+  const batchSize = Math.max(1, Math.min(12, Number(payload?.batchSize || 5)));
   const previousQuestions = Array.isArray(payload?.previousQuestions)
     ? payload.previousQuestions
     : [];
@@ -568,6 +568,8 @@ Jangan memakai trailing comma.
         category: safeText(item?.category, getQuestionFocusPlan(examinerMode, startIndex + idx)),
         provider: "gemini",
         modelUsed: safeText(result.modelUsed, ""),
+        quotaMode: false,
+        fallbackReason: "",
       };
     })
     .filter((item: any) => item.question.length > 10)

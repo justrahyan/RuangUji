@@ -1,9 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import PageShell from '../components/PageShell';
-import { ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowRight, AlertCircle, UploadCloud, FileText, X, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
 import type { ExaminerMode, SessionLength, ResearchProfile, DefenseSession, TrainingUsageStatus } from '../types';
-import { saveLatestResearch, saveActiveSession, setInMemoryDocumentText } from '../lib/storage';
+import {
+  saveLatestResearch,
+  saveActiveSession,
+  setInMemoryDocumentText,
+  getSetupCacheConsent,
+  setSetupCacheConsent,
+  saveSetupDraft,
+  getSetupDraft,
+  clearSetupDraft,
+} from '../lib/storage';
+import RuangUjiBot from '../components/RuangUjiBot';
 import SectionHeader from '../components/SectionHeader';
 
 function formatBytes(bytes: number): string {
@@ -22,6 +32,10 @@ export default function SetupPage() {
   const [startSessionLoading, setStartSessionLoading] = useState(false);
   const [quotaModalOpen, setQuotaModalOpen] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState('');
+
+  const [setupCacheConsent, setSetupCacheConsentState] = useState<'accepted' | 'declined' | null>(() => getSetupCacheConsent());
+  const [showCacheConsent, setShowCacheConsent] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   // Step 1
   const [title, setTitle] = useState('');
@@ -58,6 +72,87 @@ export default function SetupPage() {
   useEffect(() => {
     refreshUsageStatus();
   }, []);
+
+  useEffect(() => {
+    if (setupCacheConsent === null) {
+      setShowCacheConsent(true);
+      return;
+    }
+
+    if (setupCacheConsent !== 'accepted' || draftRestored) return;
+
+    const draft = getSetupDraft();
+    if (!draft) {
+      setDraftRestored(true);
+      return;
+    }
+
+    setTitle(draft.title || '');
+    setSessionType(draft.sessionType || 'Sidang Skripsi');
+    setField(draft.field || '');
+    setKeywords(draft.keywords || '');
+    setResearchApproach(draft.researchApproach || '');
+    setMethod(draft.method || '');
+    setAbstract(draft.abstract || '');
+    setConcern(draft.concern || '');
+    setExaminerMode((draft.examinerMode as ExaminerMode) || 'kritis');
+    setSessionLength((draft.sessionLength as SessionLength) || 'normal');
+
+    if (draft.documentPreview || draft.documentName || draft.docId) {
+      setDocumentPreview(draft.documentPreview || '');
+      setDocId(draft.docId || '');
+      if (draft.documentName) {
+        setUploadedFile({
+          name: draft.documentName,
+          size: draft.documentSize || 0,
+        } as File);
+        setUploadStatus('success');
+      }
+    }
+
+    setDraftRestored(true);
+  }, [setupCacheConsent, draftRestored]);
+
+  useEffect(() => {
+    if (setupCacheConsent !== 'accepted') return;
+
+    const timer = window.setTimeout(() => {
+      saveSetupDraft({
+        title,
+        sessionType,
+        field,
+        keywords,
+        researchApproach,
+        method,
+        abstract,
+        concern,
+        examinerMode,
+        sessionLength,
+        documentPreview,
+        documentName: uploadedFile?.name,
+        documentSize: uploadedFile?.size,
+        docId,
+        updatedAt: new Date().toISOString(),
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    setupCacheConsent,
+    title,
+    sessionType,
+    field,
+    keywords,
+    researchApproach,
+    method,
+    abstract,
+    concern,
+    examinerMode,
+    sessionLength,
+    documentPreview,
+    uploadedFile,
+    docId,
+  ]);
 
   // Upload Handlers
   const handleFileSelect = async (file: File) => {
@@ -190,12 +285,20 @@ export default function SetupPage() {
 
   // Navigation
   const handleNextStep1 = () => {
+    if (usageStatus?.blocked || usageStatus?.remaining === 0) {
+      showQuotaModal(undefined, usageStatus);
+      return;
+    }
     if (!title.trim()) { setError('Judul penelitian tidak boleh kosong.'); return; }
     if (!field.trim()) { setError('Bidang / Topik penelitian tidak boleh kosong.'); return; }
     setError(''); setStep(2);
   };
 
   const handleNextStep2 = () => {
+    if (usageStatus?.blocked || usageStatus?.remaining === 0) {
+      showQuotaModal(undefined, usageStatus);
+      return;
+    }
     if (!researchApproach) { setError('Pendekatan penelitian tidak boleh kosong.'); return; }
     if (!method.trim()) { setError('Metode / Teknik utama tidak boleh kosong.'); return; }
     if (!abstract.trim()) { setError('Ringkasan / Abstrak penelitian tidak boleh kosong. Ketik langsung atau unggah dokumen untuk mengisi otomatis.'); return; }
@@ -260,6 +363,7 @@ export default function SetupPage() {
 
       saveLatestResearch(research);
       saveActiveSession(session);
+      clearSetupDraft();
       navigate('/defense');
     } catch (err) {
       console.error('Gagal memulai sesi:', err);
@@ -286,7 +390,19 @@ export default function SetupPage() {
     { id: 'intensif', label: 'Intensif', count: 12 },
   ];
 
-  const approachOptions = ['Kuantitatif', 'Kualitatif', 'Mixed Methods', 'R&D / Pengembangan', 'Eksperimen', 'Studi Literatur', 'Lainnya'];
+  const approachOptions = [
+    'Kuantitatif',
+    'Kualitatif',
+    'Mixed Methods',
+    'R&D / Pengembangan',
+    'Eksperimen',
+    'Studi Kasus',
+    'Studi Literatur',
+    'Systematic Review',
+    'Perancangan / Implementasi Sistem',
+    'Analisis Data / Komputasional',
+    'Lainnya',
+  ];
   const sessionTypeOptions = ['Ujian Proposal', 'Seminar Hasil', 'Sidang Skripsi', 'Presentasi Paper', 'Presentasi Tugas Akhir', 'Lainnya'];
 
   // Styles
@@ -346,6 +462,84 @@ export default function SetupPage() {
                 {[1, 2, 3].map(s => (
                   <div key={s} style={{ width: '40px', height: '6px', backgroundColor: step >= s ? 'var(--primary-blue)' : 'var(--bg-soft)', borderRadius: '99px', transition: 'background-color 0.3s' }} />
                 ))}
+              </div>
+            </div>
+
+            <div style={{ padding: '1.25rem 2rem' }}>
+
+              <div
+                className="fade-up"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  padding: '1rem',
+                  borderRadius: '16px',
+                  border: usageStatus?.blocked ? '1px solid #fecaca' : '1px solid #bfdbfe',
+                  backgroundColor: usageStatus?.blocked ? '#fef2f2' : '#eff6ff',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 999,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: usageStatus?.blocked ? '#fee2e2' : '#dbeafe',
+                      color: usageStatus?.blocked ? '#b91c1c' : 'var(--primary-blue)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {usageStatus?.blocked ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+                  </div>
+
+                  <div>
+                    <p
+                      style={{
+                        fontWeight: 800,
+                        fontSize: '0.9rem',
+                        color: usageStatus?.blocked ? '#991b1b' : '#1e40af',
+                        marginBottom: '0.25rem',
+                      }}
+                    >
+                      {usageStatus?.blocked ? 'Batas latihan periode ini sudah habis' : 'Kuota latihan tersedia'}
+                    </p>
+
+                    <p
+                      style={{
+                        fontSize: '0.82rem',
+                        color: usageStatus?.blocked ? '#b91c1c' : '#1d4ed8',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {usageLoading
+                        ? 'Memeriksa kuota latihan...'
+                        : usageStatus
+                          ? `Sisa ${usageStatus.remaining} dari ${usageStatus.limit} sesi. Reset setiap ${usageStatus.windowHours} jam, berikutnya ${formatResetTime(usageStatus.resetAt)}.`
+                          : 'Status kuota belum tersedia.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={refreshUsageStatus}
+                  disabled={usageLoading}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.78rem',
+                    borderRadius: '999px',
+                    whiteSpace: 'nowrap',
+                    opacity: usageLoading ? 0.7 : 1,
+                  }}
+                >
+                  {usageLoading ? 'Cek...' : 'Refresh'}
+                </button>
               </div>
             </div>
 
@@ -418,7 +612,7 @@ export default function SetupPage() {
                   {/* Pendekatan + Metode — 2 kolom */}
                   <div style={col2}>
                     <div>
-                      {label('Pendekatan Penelitian', true)}
+                      {label('Pendekatan / Desain Penelitian', true)}
                       <select
                         className="input"
                         value={researchApproach}
@@ -427,7 +621,7 @@ export default function SetupPage() {
                         <option value="">Pilih pendekatan</option>
                         {approachOptions.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
-                      {hint('Pilih pendekatan umum yang paling sesuai dengan desain penelitian Anda.')}
+                      {hint('Pilih desain umum penelitian. Jika tidak pas, pilih “Lainnya” lalu jelaskan di metode utama.')}
                     </div>
                     <div>
                       {label('Metode / Teknik Utama', true)}
@@ -438,7 +632,7 @@ export default function SetupPage() {
                         value={method}
                         onChange={e => setMethod(e.target.value)}
                       />
-                      {hint('Isi dengan metode atau teknik inti yang digunakan.')}
+                      {hint('Isi dengan metode, teknik, model, instrumen, atau prosedur inti yang paling menentukan penelitian Anda.')}
                     </div>
                   </div>
 
@@ -569,85 +763,6 @@ export default function SetupPage() {
               {/* STEP 3 – Mode Simulasi */}
               {step === 3 && (
                 <div className="fade-up" style={{ display: 'grid', gap: '2rem' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      justifyContent: 'space-between',
-                      gap: '1rem',
-                      padding: '1rem',
-                      borderRadius: '16px',
-                      border: usageStatus?.blocked
-                        ? '1px solid #fecaca'
-                        : '1px solid #bfdbfe',
-                      backgroundColor: usageStatus?.blocked
-                        ? '#fef2f2'
-                        : '#eff6ff',
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 999,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: usageStatus?.blocked ? '#fee2e2' : '#dbeafe',
-                          color: usageStatus?.blocked ? '#b91c1c' : 'var(--primary-blue)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {usageStatus?.blocked ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-                      </div>
-
-                      <div>
-                        <p
-                          style={{
-                            fontWeight: 800,
-                            fontSize: '0.9rem',
-                            color: usageStatus?.blocked ? '#991b1b' : '#1e40af',
-                            marginBottom: '0.25rem',
-                          }}
-                        >
-                          {usageStatus?.blocked
-                            ? 'Batas latihan periode ini sudah habis'
-                            : 'Kuota latihan tersedia'}
-                        </p>
-
-                        <p
-                          style={{
-                            fontSize: '0.82rem',
-                            color: usageStatus?.blocked ? '#b91c1c' : '#1d4ed8',
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          {usageLoading
-                            ? 'Memeriksa kuota latihan...'
-                            : usageStatus
-                              ? `Sisa ${usageStatus.remaining} dari ${usageStatus.limit} sesi. Reset setiap ${usageStatus.windowHours} jam, berikutnya ${formatResetTime(usageStatus.resetAt)}.`
-                              : 'Status kuota belum tersedia.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={refreshUsageStatus}
-                      disabled={usageLoading}
-                      className="btn btn-secondary"
-                      style={{
-                        padding: '0.45rem 0.85rem',
-                        fontSize: '0.78rem',
-                        borderRadius: '999px',
-                        whiteSpace: 'nowrap',
-                        opacity: usageLoading ? 0.7 : 1,
-                      }}
-                    >
-                      {usageLoading ? 'Cek...' : 'Refresh'}
-                    </button>
-                  </div>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem' }}>Pilih Mode Penguji</label>
@@ -746,8 +861,34 @@ export default function SetupPage() {
                   ? <Link to="/" className="btn btn-secondary">Kembali ke Beranda</Link>
                   : <button className="btn btn-secondary" onClick={() => { setStep(step - 1); setError(''); }}>Kembali</button>
                 }
-                {step === 1 && <button className="btn btn-primary" onClick={handleNextStep1}>Lanjut <ArrowRight size={18} /></button>}
-                {step === 2 && <button className="btn btn-primary" onClick={handleNextStep2}>Lanjut <ArrowRight size={18} /></button>}
+                {step === 1 && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleNextStep1}
+                    disabled={usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
+                    style={{
+                      opacity: usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 0.65 : 1,
+                      cursor: usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    title={usageStatus?.blocked || usageStatus?.remaining === 0 ? 'Batas latihan sudah habis untuk periode ini.' : undefined}
+                  >
+                    {usageStatus?.blocked || usageStatus?.remaining === 0 ? 'Batas Latihan Habis' : <>Lanjut <ArrowRight size={18} /></>}
+                  </button>
+                )}
+                {step === 2 && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleNextStep2}
+                    disabled={usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
+                    style={{
+                      opacity: usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 0.65 : 1,
+                      cursor: usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    title={usageStatus?.blocked || usageStatus?.remaining === 0 ? 'Batas latihan sudah habis untuk periode ini.' : undefined}
+                  >
+                    {usageStatus?.blocked || usageStatus?.remaining === 0 ? 'Batas Latihan Habis' : <>Lanjut <ArrowRight size={18} /></>}
+                  </button>
+                )}
                 {step === 3 && (
                   <button
                     className="btn btn-primary"
@@ -899,8 +1040,165 @@ export default function SetupPage() {
         </div>
       )}
 
+      {showCacheConsent && setupCacheConsent !== 'accepted' && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 18,
+            bottom: 18,
+            zIndex: 9999,
+            width: 'min(420px, calc(100vw - 2rem))',
+            backgroundColor: 'var(--white)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 24,
+            boxShadow: '0 24px 70px rgba(15, 23, 42, 0.18)',
+            padding: '1rem',
+          }}
+          className="fade-up"
+        >
+          <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'flex-start' }}>
+            <div style={{ flexShrink: 0 }}>
+              <RuangUjiBot state="idle" size={58} />
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.35rem' }}>
+                <ShieldCheck size={16} color="var(--primary-blue)" />
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                  Simpan draft latihan?
+                </h3>
+              </div>
+
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+                RuangUji dapat menyimpan data yang sedang Anda isi di halaman ini, sehingga draft latihan tidak hilang jika halaman tertutup atau ter-refresh.
+              </p>
+
+              <p style={{ margin: '0.5rem 0 0', color: 'var(--text-muted)', fontSize: '0.74rem', lineHeight: 1.45 }}>
+                Yang disimpan hanya data sementara dari form. File asli tidak disimpan di browser.
+              </p>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.9rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 0.8rem', fontSize: '0.8rem', borderRadius: '999px' }}
+                  onClick={() => {
+                    setSetupCacheConsent('declined');
+                    setSetupCacheConsentState('declined');
+                    setShowCacheConsent(false);
+                    clearSetupDraft();
+                  }}
+                >
+                  Tidak sekarang
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', borderRadius: '999px' }}
+                  onClick={() => {
+                    setSetupCacheConsent('accepted');
+                    setSetupCacheConsentState('accepted');
+                    setShowCacheConsent(false);
+                  }}
+                >
+                  Aktifkan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {setupCacheConsent === 'declined' && !showCacheConsent && (
+        <button
+          type="button"
+          className="setup-cache-fab"
+          onClick={() => setShowCacheConsent(true)}
+          aria-label="Aktifkan penyimpanan draft setup"
+        >
+          <RuangUjiBot state="idle" size={46} />
+
+          <span className="setup-cache-fab-bubble">
+            Aktifkan penyimpanan draft agar data latihan tidak hilang saat halaman ter-refresh.
+          </span>
+        </button>
+      )}
+
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .setup-cache-fab {
+          position: fixed;
+          right: 18px;
+          bottom: 18px;
+          z-index: 9998;
+          width: 64px;
+          height: 64px;
+          border: 1px solid var(--border-color);
+          border-radius: 999px;
+          background: var(--white);
+          box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .setup-cache-fab:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 22px 60px rgba(37, 99, 235, 0.22);
+        }
+
+        .setup-cache-fab-bubble {
+          position: absolute;
+          right: calc(100% + 12px);
+          bottom: 10px;
+          width: 230px;
+          padding: 0.7rem 0.8rem;
+          border-radius: 16px;
+          background: #0f172a;
+          color: #ffffff;
+          font-size: 0.76rem;
+          font-weight: 600;
+          line-height: 1.45;
+          text-align: left;
+          box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+          opacity: 0;
+          transform: translateX(8px) translateY(4px);
+          pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .setup-cache-fab-bubble::after {
+          content: '';
+          position: absolute;
+          right: -6px;
+          bottom: 18px;
+          width: 12px;
+          height: 12px;
+          background: #0f172a;
+          transform: rotate(45deg);
+        }
+
+        .setup-cache-fab:hover .setup-cache-fab-bubble {
+          opacity: 1;
+          transform: translateX(0) translateY(0);
+        }
+
+        @media (max-width: 640px) {
+          .setup-cache-fab {
+            right: 14px;
+            bottom: 14px;
+            width: 58px;
+            height: 58px;
+          }
+
+          .setup-cache-fab-bubble {
+            display: none;
+          }
+        }
       `}</style>
     </PageShell>
   );

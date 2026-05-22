@@ -4,6 +4,27 @@ export const LATEST_RESEARCH_KEY = 'ruanguji_latest_research';
 export const ACTIVE_SESSION_KEY = 'ruanguji_active_session';
 export const HISTORY_KEY = 'ruanguji_history';
 
+export const SETUP_DRAFT_KEY = 'ruanguji_setup_draft';
+export const SETUP_CACHE_CONSENT_KEY = 'ruanguji_setup_cache_consent';
+
+export type SetupDraft = {
+  title: string;
+  sessionType: string;
+  field: string;
+  keywords: string;
+  researchApproach: string;
+  method: string;
+  abstract: string;
+  concern: string;
+  examinerMode: string;
+  sessionLength: string;
+  documentPreview?: string;
+  documentName?: string;
+  documentSize?: number;
+  docId?: string;
+  updatedAt: string;
+};
+
 // --- Research ---
 export function saveLatestResearch(research: ResearchProfile): void {
   try {
@@ -83,6 +104,40 @@ export function deleteHistoryItem(id: string): void {
 
 export function clearHistory(): void {
   localStorage.removeItem(HISTORY_KEY);
+}
+
+export function getSetupCacheConsent(): 'accepted' | 'declined' | null {
+  const value = localStorage.getItem(SETUP_CACHE_CONSENT_KEY);
+  if (value === 'accepted' || value === 'declined') return value;
+  return null;
+}
+
+export function setSetupCacheConsent(value: 'accepted' | 'declined'): void {
+  localStorage.setItem(SETUP_CACHE_CONSENT_KEY, value);
+}
+
+export function saveSetupDraft(draft: SetupDraft): void {
+  try {
+    if (getSetupCacheConsent() !== 'accepted') return;
+    localStorage.setItem(SETUP_DRAFT_KEY, JSON.stringify(draft));
+  } catch (err) {
+    console.error('Failed to save setup draft', err);
+  }
+}
+
+export function getSetupDraft(): SetupDraft | null {
+  try {
+    if (getSetupCacheConsent() !== 'accepted') return null;
+    const raw = localStorage.getItem(SETUP_DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.error('Failed to parse setup draft', err);
+    return null;
+  }
+}
+
+export function clearSetupDraft(): void {
+  localStorage.removeItem(SETUP_DRAFT_KEY);
 }
 
 // --- In-Memory Document Text Cache ---

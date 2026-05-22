@@ -53,6 +53,216 @@ function mentionsMetric(research: ResearchProfile): boolean {
   return metrics.some(m => text.includes(m));
 }
 
+function cleanKeyword(value = '') {
+  return value
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getContextText(research: ResearchProfile) {
+  return [
+    research.title,
+    research.field,
+    research.keywords,
+    research.researchApproach,
+    research.method,
+    research.abstract,
+    research.concern,
+    research.documentPreview,
+    research.documentText,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractContextKeywords(research: ResearchProfile, limit = 8) {
+  const text = cleanKeyword(getContextText(research)).toLowerCase();
+
+  const stopWords = new Set([
+    'yang', 'dan', 'atau', 'dari', 'untuk', 'pada', 'dengan', 'dalam', 'adalah',
+    'sebagai', 'oleh', 'ini', 'itu', 'ke', 'di', 'the', 'and', 'of', 'to', 'in',
+    'penelitian', 'metode', 'hasil', 'data', 'analisis', 'menggunakan',
+  ]);
+
+  const words = text.match(/\b[\p{L}\p{N}-]{4,}\b/gu) || [];
+  const freq = new Map<string, number>();
+
+  words.forEach((word) => {
+    if (stopWords.has(word)) return;
+    freq.set(word, (freq.get(word) || 0) + 1);
+  });
+
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([word]) => word)
+    .slice(0, limit);
+}
+
+function hasExplicitMLContext(research: ResearchProfile) {
+  const text = getContextText(research).toLowerCase();
+  return [
+    'machine learning', 'deep learning', 'cnn', 'svm', 'random forest',
+    'akurasi', 'accuracy', 'precision', 'recall', 'f1-score', 'f1 score',
+    'confusion matrix', 'overfitting', 'underfitting', 'training', 'validation',
+    'dataset', 'klasifikasi', 'regresi', 'yolo', 'model prediksi',
+  ].some((term) => text.includes(term));
+}
+
+function hasExplicitStatisticsContext(research: ResearchProfile) {
+  const text = getContextText(research).toLowerCase();
+  return [
+    'kuantitatif', 'statistik', 'uji t', 'anova', 'regresi', 'korelasi',
+    'validitas', 'reliabilitas', 'sampel', 'responden', 'signifikansi',
+    'p-value', 'instrumen', 'angket', 'kuesioner',
+  ].some((term) => text.includes(term));
+}
+
+function modeLead(examinerMode: string) {
+  const mode = String(examinerMode || '').toLowerCase();
+
+  if (mode === 'santai') return 'Secara sederhana,';
+  if (mode === 'killer') return 'Jika diuji secara ketat,';
+  if (mode === 'metodologi') return 'Dari sisi metodologi,';
+  if (mode === 'statistik') return 'Dari sisi pembuktian data,';
+  if (mode === 'novelty') return 'Dari sisi kebaruan,';
+  if (mode === 'implementasi') return 'Dari sisi penerapan,';
+  return 'Secara kritis,';
+}
+
+function contextualTemplateBank(research: ResearchProfile, examinerMode: string) {
+  const field = research.field?.trim() || 'bidang penelitian Anda';
+  const method = research.method?.trim() || 'metode yang digunakan';
+  const title = research.title?.trim() || 'penelitian Anda';
+  const keywords = extractContextKeywords(research, 5);
+  const mainKeyword = keywords[0] || field;
+  const secondKeyword = keywords[1] || method;
+  const lead = modeLead(examinerMode);
+
+  const general = [
+    {
+      category: 'latar_belakang',
+      question: `${lead} apa masalah utama yang ingin diselesaikan dalam penelitian "${title}", dan mengapa masalah tersebut penting pada konteks ${field}?`,
+    },
+    {
+      category: 'metode',
+      question: `${lead} bagaimana ${method} membantu menjawab tujuan penelitian Anda, bukan hanya menjadi pilihan teknis semata?`,
+    },
+    {
+      category: 'validitas',
+      question: `${lead} bukti apa yang paling kuat dari penelitian Anda untuk menunjukkan bahwa kesimpulan yang diambil memang dapat dipertanggungjawabkan?`,
+    },
+    {
+      category: 'hasil',
+      question: `${lead} bagian mana dari hasil atau temuan penelitian yang paling mendukung argumen utama Anda?`,
+    },
+    {
+      category: 'batasan',
+      question: `${lead} apa keterbatasan utama penelitian ini jika diterapkan pada kondisi, subjek, atau konteks yang berbeda?`,
+    },
+    {
+      category: 'kontribusi',
+      question: `${lead} apa kontribusi utama penelitian Anda dibandingkan penelitian, pendekatan, atau praktik yang sudah ada sebelumnya?`,
+    },
+    {
+      category: 'konteks_dokumen',
+      question: `${lead} dalam dokumen Anda terdapat fokus pada "${mainKeyword}". Mengapa bagian itu penting untuk menjawab rumusan masalah atau tujuan penelitian?`,
+    },
+    {
+      category: 'hubungan_konsep',
+      question: `${lead} bagaimana hubungan antara "${mainKeyword}" dan "${secondKeyword}" dalam membentuk arah penelitian Anda?`,
+    },
+  ];
+
+  if (examinerMode === 'statistik' && hasExplicitStatisticsContext(research)) {
+    general.push({
+      category: 'statistik',
+      question: `Bagaimana Anda memastikan data, sampel, instrumen, atau hasil analisis yang digunakan sudah cukup kuat untuk mendukung kesimpulan penelitian?`,
+    });
+  }
+
+  if (examinerMode === 'statistik' && !hasExplicitStatisticsContext(research)) {
+    general.push({
+      category: 'validitas',
+      question: `Karena penelitian ini tidak tampak berfokus pada statistik formal, bagaimana Anda menjelaskan kekuatan bukti atau temuan yang digunakan untuk mendukung kesimpulan?`,
+    });
+  }
+
+  if (hasExplicitMLContext(research)) {
+    general.push({
+      category: 'model',
+      question: `Dalam konteks model atau eksperimen yang Anda gunakan, bagaimana Anda memastikan hasil penelitian tidak hanya baik pada data yang digunakan, tetapi juga masuk akal untuk data atau kondisi baru?`,
+    });
+  }
+
+  return general;
+}
+
+export function generateContextualQuestionBatch(params: {
+  research: ResearchProfile;
+  examinerMode: string;
+  questionIndex: number;
+  batchSize: number;
+  previousQuestions?: string[];
+  fallbackReason?: string;
+}) {
+  const {
+    research,
+    examinerMode,
+    questionIndex,
+    batchSize,
+    previousQuestions = [],
+    fallbackReason = 'Kuota AI sedang penuh atau model Gemini gagal digunakan.',
+  } = params;
+
+  const bank = contextualTemplateBank(research, examinerMode);
+  const previous = previousQuestions.map((q) => normalizeText(q));
+
+  const selected: {
+    index: number;
+    question: string;
+    speechText: string;
+    category: string;
+    provider: string;
+    quotaMode: boolean;
+    fallbackReason: string;
+  }[] = [];
+
+  let cursor = questionIndex;
+
+  while (selected.length < batchSize && cursor < questionIndex + bank.length + batchSize) {
+    const candidate = bank[cursor % bank.length];
+    const normalizedCandidate = normalizeText(candidate.question);
+    const duplicated =
+      previous.some((old) => isSimilarQuestion(old, normalizedCandidate)) ||
+      selected.some((item) => isSimilarQuestion(item.question, candidate.question));
+
+    if (!duplicated) {
+      selected.push({
+        index: questionIndex + selected.length,
+        question: candidate.question,
+        speechText: candidate.question,
+        category: candidate.category,
+        provider: 'contextual-template',
+        quotaMode: true,
+        fallbackReason,
+      });
+    }
+
+    cursor += 1;
+  }
+
+  return {
+    ok: true,
+    provider: 'contextual-template',
+    quotaMode: true,
+    fallbackReason,
+    questions: selected,
+  };
+}
+
 export function generateQuestion(
   research: ResearchProfile,
   examinerMode: string,

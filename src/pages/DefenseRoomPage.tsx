@@ -13,6 +13,7 @@ import {
   FileText,
   Loader2,
   AudioLines,
+  Clock3,
 } from 'lucide-react';
 import type { DefenseSession, TranscriptItem } from '../types';
 import {
@@ -87,6 +88,49 @@ function normalizeFeedback(evaluation: any) {
   };
 }
 
+function formatAnswerDuration(ms?: number) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getAnswerTimingStats(transcript: TranscriptItem[]) {
+  const durations = transcript
+    .filter((item) => item.type === 'feedback' && typeof item.answerDurationMs === 'number')
+    .map((item) => Number(item.answerDurationMs))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (!durations.length) {
+    return {
+      averageAnswerDurationMs: 0,
+      answerTimingInsight: 'Belum ada data waktu menjawab yang cukup.',
+    };
+  }
+
+  const average = Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length);
+  const averageSeconds = average / 1000;
+
+  let insight = `Rata-rata waktu menjawab Anda sekitar ${formatAnswerDuration(average)} per pertanyaan.`;
+
+  if (averageSeconds < 30) {
+    insight += ' Jawaban cenderung sangat cepat, jadi pastikan tetap memuat alasan dan contoh yang cukup.';
+  } else if (averageSeconds <= 120) {
+    insight += ' Tempo menjawab sudah cukup ideal untuk latihan sidang.';
+  } else if (averageSeconds <= 300) {
+    insight += ' Jawaban masih wajar, tetapi bisa dilatih agar lebih ringkas dan langsung ke inti.';
+  } else {
+    insight += ' Beberapa jawaban membutuhkan waktu cukup lama. Latih struktur jawaban agar bisa lebih cepat dan terarah.';
+  }
+
+  return {
+    averageAnswerDurationMs: average,
+    answerTimingInsight: insight,
+  };
+}
+
 export default function DefenseRoomPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<DefenseSession | null>(null);
@@ -112,6 +156,9 @@ export default function DefenseRoomPage() {
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailModalContent] = useState({ title: '', content: '' });
+
+  const questionStartedAtRef = useRef<number>(0);
+  const [answerTimerSeconds, setAnswerTimerSeconds] = useState(0);
 
   const middleScrollRef = useRef<HTMLDivElement>(null);
 
@@ -191,6 +238,19 @@ export default function DefenseRoomPage() {
       setIsVoiceListening(false);
     }
   }, [isVoiceMode]);
+
+  useEffect(() => {
+    if (!currentQuestion || hasFeedback || isGeneratingQuestion || isEvaluatingAnswer || isFinishingSession) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (!questionStartedAtRef.current) return;
+      setAnswerTimerSeconds(Math.floor((Date.now() - questionStartedAtRef.current) / 1000));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [currentQuestion, hasFeedback, isGeneratingQuestion, isEvaluatingAnswer, isFinishingSession]);
 
   const toggleVoice = () => {
     const newVal = !voiceEnabled;
@@ -291,6 +351,8 @@ export default function DefenseRoomPage() {
       };
 
       setCurrentQuestion(newQuestion);
+      questionStartedAtRef.current = Date.now();
+      setAnswerTimerSeconds(0);
       setSession(updatedSession);
       saveActiveSession(updatedSession);
 
@@ -427,6 +489,9 @@ export default function DefenseRoomPage() {
     const activeAnswerQuestionId = currentQuestion.id;
     const activeAnswerQuestionText = currentQuestion.text;
     const activeAnswerText = answerText.trim();
+    const answerDurationMs = questionStartedAtRef.current
+      ? Math.max(0, Date.now() - questionStartedAtRef.current)
+      : 0;
 
     const ansItem: TranscriptItem = {
       id: Date.now().toString(),
@@ -435,6 +500,7 @@ export default function DefenseRoomPage() {
       questionId: activeAnswerQuestionId,
       questionText: activeAnswerQuestionText,
       answerText: activeAnswerText,
+      answerDurationMs,
       createdAt: new Date().toISOString(),
     };
 
@@ -489,7 +555,12 @@ export default function DefenseRoomPage() {
     const strengthsText = normEval.strengths.map((s, idx) => `${idx + 1}) ${s}`).join('\n');
     const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
 
-    const feedbackText = `Skor: ${normEval.score}.\n\nKekuatan:\n${strengthsText}\n\nPerlu Diperbaiki:\n${weaknessesText}\n\nSaran:\n${normEval.suggestion}`;
+    const feedbackText =
+      `Skor: ${normEval.score}.\n` +
+      `Waktu menjawab: ${formatAnswerDuration(answerDurationMs)}.\n\n` +
+      `Kekuatan:\n${strengthsText}\n\n` +
+      `Perlu Diperbaiki:\n${weaknessesText}\n\n` +
+      `Saran:\n${normEval.suggestion}`;
 
     const speechStrengths = normEval.strengths
       .slice(0, 2)
@@ -518,6 +589,7 @@ export default function DefenseRoomPage() {
       feedback: feedbackText,
       speechText: feedbackSpeechText,
       score: normEval.score,
+      answerDurationMs,
       createdAt: new Date().toISOString(),
     };
 
@@ -634,6 +706,7 @@ export default function DefenseRoomPage() {
       finalEval.score = finalScore;
 
       const hasAnswers = latestSession.transcript.some((t) => t.type === 'answer');
+      const timingStats = getAnswerTimingStats(latestSession.transcript);
 
       if (hasAnswers) {
         saveHistoryItem({
@@ -652,6 +725,8 @@ export default function DefenseRoomPage() {
           strengths: finalEval.strengths,
           weaknesses: finalEval.weaknesses,
           nextPractice: finalEval.nextPractice || ['Terus berlatih'],
+          averageAnswerDurationMs: timingStats.averageAnswerDurationMs,
+          answerTimingInsight: timingStats.answerTimingInsight,
         });
 
         localStorage.setItem(
@@ -662,6 +737,8 @@ export default function DefenseRoomPage() {
             strengths: finalEval.strengths,
             weaknesses: finalEval.weaknesses,
             nextPractice: finalEval.nextPractice || ['Terus berlatih'],
+            averageAnswerDurationMs: timingStats.averageAnswerDurationMs,
+            answerTimingInsight: timingStats.answerTimingInsight,
           })
         );
 
@@ -884,6 +961,13 @@ export default function DefenseRoomPage() {
             <p>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
 
             <div className="defense-main-header-actions">
+              {currentQuestion && !hasFeedback && !isGeneratingQuestion && !isEvaluatingAnswer && (
+                <div className="defense-timer-pill" title="Waktu menjawab pertanyaan aktif">
+                  <Clock3 size={14} />
+                  <span>{formatAnswerDuration(answerTimerSeconds * 1000)}</span>
+                </div>
+              )}
+
               <button
                 onClick={toggleVoice}
                 className={`defense-audio-pill ${voiceEnabled ? 'active' : ''}`}

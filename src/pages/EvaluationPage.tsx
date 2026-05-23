@@ -23,9 +23,20 @@ export default function EvaluationPage() {
         strengths: last.strengths || ['Penyelesaian sesi tepat waktu'],
         weaknesses: last.weaknesses || ['Perlu analisis riwayat lebih lanjut'],
         nextPractice: last.nextPractice || ['Coba mode penguji lain'],
+        averageAnswerDurationMs: last.averageAnswerDurationMs,
+        answerTimingInsight: last.answerTimingInsight,
       });
     }
   }, []);
+
+  function formatEvalDuration(ms?: number) {
+    const safeMs = Math.max(0, Number(ms) || 0);
+    const totalSeconds = Math.floor(safeMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 
   if (!evalData) {
     return (
@@ -63,6 +74,14 @@ export default function EvaluationPage() {
             </Link>
           </>
         }
+        metadata={[
+          evalData.averageAnswerDurationMs
+            ? { label: 'Rata-rata Waktu Menjawab', value: formatEvalDuration(evalData.averageAnswerDurationMs) }
+            : null,
+          evalData.answerTimingInsight
+            ? { label: 'Catatan Tempo Jawaban', value: evalData.answerTimingInsight }
+            : null,
+        ].filter(Boolean) as any}
       />
     </PageShell>
   );

@@ -53,6 +53,7 @@ export interface TranscriptItem {
   speechText?: string;
   normalizedAnswer?: string;
   score?: number;
+  answerDurationMs?: number;
   createdAt: string;
   timestamp?: string;
 }
@@ -62,7 +63,6 @@ export interface AnswerEvaluation {
   strengths: string[];
   weaknesses: string[];
   suggestion: string;
-  improvedAnswer?: string;
   speechText?: string;
   normalizedAnswer?: string;
   answerCategory?: string;
@@ -109,4 +109,6 @@ export interface HistoryItem {
   strengths?: string[];
   weaknesses?: string[];
   nextPractice?: string[];
+  averageAnswerDurationMs?: number;
+  answerTimingInsight?: string;
 }

@@ -26,10 +26,18 @@ function pickVoice(utterance: SpeechSynthesisUtterance) {
       const lang = voice.lang.toLowerCase();
 
       let score = 0;
-      if (lang.includes('id')) score += 10;
-      if (name.includes('indonesia') || name.includes('indonesian')) score += 8;
-      if (name.includes('google')) score += 2;
-      if (name.includes('microsoft')) score += 2;
+
+      if (lang === 'id-id') score += 100;
+      else if (lang.startsWith('id')) score += 80;
+
+      if (name.includes('indonesia')) score += 60;
+      if (name.includes('indonesian')) score += 60;
+      if (name.includes('bahasa')) score += 35;
+
+      if (name.includes('google')) score += 8;
+      if (name.includes('microsoft')) score += 8;
+
+      if (lang.startsWith('en')) score -= 40;
 
       return { voice, score };
     })
@@ -54,8 +62,8 @@ function applyVoiceProfile(utterance: SpeechSynthesisUtterance) {
     utterance.rate = 1.12;
     utterance.pitch = 1.0;
   } else {
-    utterance.rate = 0.94;
-    utterance.pitch = 1.0;
+    utterance.rate = 0.88;
+    utterance.pitch = 1.02;
   }
 }
 

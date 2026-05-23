@@ -251,6 +251,19 @@ export default function SetupPage() {
     }
   };
 
+  const formatShortResetTime = (value?: string) => {
+    if (!value) return '-';
+
+    try {
+      return new Date(value).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '-';
+    }
+  };
+
   const refreshUsageStatus = async () => {
     setUsageLoading(true);
 
@@ -458,93 +471,61 @@ export default function SetupPage() {
                   {step === 1 ? 'Informasi Penelitian' : step === 2 ? 'Detail Penelitian' : 'Mode Simulasi'}
                 </h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                {[1, 2, 3].map(s => (
-                  <div key={s} style={{ width: '40px', height: '6px', backgroundColor: step >= s ? 'var(--primary-blue)' : 'var(--bg-soft)', borderRadius: '99px', transition: 'background-color 0.3s' }} />
-                ))}
+              <div className="setup-step-right">
+                {step > 1 && usageStatus && (
+                  <span className={`setup-quota-mini ${usageStatus.blocked || usageStatus.remaining === 0 ? 'blocked' : ''}`}>
+                    {usageStatus.blocked || usageStatus.remaining === 0
+                      ? 'Batas habis'
+                      : `Sisa ${usageStatus.remaining}/${usageStatus.limit}`}
+                  </span>
+                )}
+
+                <div className="setup-progress-bars">
+                  {[1, 2, 3].map(s => (
+                    <div
+                      key={s}
+                      className={step >= s ? 'active' : ''}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div style={{ padding: '1.25rem 2rem' }}>
+            <div className="setup-quota-wrap">
+              <div className={`setup-quota-card fade-up ${usageStatus?.blocked ? 'is-blocked' : ''}`}>
+                <div className="setup-quota-top">
+                  <div className="setup-quota-left">
+                    <div className="setup-quota-icon">
+                      {usageStatus?.blocked ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}
+                    </div>
 
-              <div
-                className="fade-up"
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: '1rem',
-                  padding: '1rem',
-                  borderRadius: '16px',
-                  border: usageStatus?.blocked ? '1px solid #fecaca' : '1px solid #bfdbfe',
-                  backgroundColor: usageStatus?.blocked ? '#fef2f2' : '#eff6ff',
-                }}
-              >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 999,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: usageStatus?.blocked ? '#fee2e2' : '#dbeafe',
-                      color: usageStatus?.blocked ? '#b91c1c' : 'var(--primary-blue)',
-                      flexShrink: 0,
-                    }}
+                    <p className="setup-quota-title">
+                      {usageStatus?.blocked ? 'Batas latihan habis' : 'Kuota latihan tersedia'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={refreshUsageStatus}
+                    disabled={usageLoading}
+                    className="setup-quota-refresh"
                   >
-                    {usageStatus?.blocked ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-                  </div>
-
-                  <div>
-                    <p
-                      style={{
-                        fontWeight: 800,
-                        fontSize: '0.9rem',
-                        color: usageStatus?.blocked ? '#991b1b' : '#1e40af',
-                        marginBottom: '0.25rem',
-                      }}
-                    >
-                      {usageStatus?.blocked ? 'Batas latihan periode ini sudah habis' : 'Kuota latihan tersedia'}
-                    </p>
-
-                    <p
-                      style={{
-                        fontSize: '0.82rem',
-                        color: usageStatus?.blocked ? '#b91c1c' : '#1d4ed8',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {usageLoading
-                        ? 'Memeriksa kuota latihan...'
-                        : usageStatus
-                          ? `Sisa ${usageStatus.remaining} dari ${usageStatus.limit} sesi. Reset setiap ${usageStatus.windowHours} jam, berikutnya ${formatResetTime(usageStatus.resetAt)}.`
-                          : 'Status kuota belum tersedia.'}
-                    </p>
-                  </div>
+                    {usageLoading ? 'Cek...' : 'Refresh'}
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={refreshUsageStatus}
-                  disabled={usageLoading}
-                  className="btn btn-secondary"
-                  style={{
-                    padding: '0.45rem 0.85rem',
-                    fontSize: '0.78rem',
-                    borderRadius: '999px',
-                    whiteSpace: 'nowrap',
-                    opacity: usageLoading ? 0.7 : 1,
-                  }}
-                >
-                  {usageLoading ? 'Cek...' : 'Refresh'}
-                </button>
+                <p className="setup-quota-meta">
+                  {usageLoading
+                    ? 'Memeriksa kuota...'
+                    : usageStatus
+                      ? `Sisa ${usageStatus.remaining}/${usageStatus.limit} sesi · Reset ${formatShortResetTime(usageStatus.resetAt)}`
+                      : 'Status kuota belum tersedia.'}
+                </p>
               </div>
             </div>
 
             {/* Form Body */}
-            <div style={{ padding: '2rem', backgroundColor: 'var(--white)' }}>
+            <div style={{ padding: '1.35rem 2rem 2rem', backgroundColor: 'var(--white)' }}>
 
               {error && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.875rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
@@ -856,14 +837,14 @@ export default function SetupPage() {
               )}
 
               {/* Footer Nav */}
-              <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+              <div className="setup-footer-nav">
                 {step === 1
-                  ? <Link to="/" className="btn btn-secondary">Kembali ke Beranda</Link>
-                  : <button className="btn btn-secondary" onClick={() => { setStep(step - 1); setError(''); }}>Kembali</button>
+                  ? <Link to="/" className="btn btn-secondary setup-footer-btn">Kembali</Link>
+                  : <button className="btn btn-secondary setup-footer-btn" onClick={() => { setStep(step - 1); setError(''); }}>Kembali</button>
                 }
                 {step === 1 && (
                   <button
-                    className="btn btn-primary"
+                    className="btn btn-primary setup-footer-btn"
                     onClick={handleNextStep1}
                     disabled={usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
                     style={{
@@ -877,7 +858,7 @@ export default function SetupPage() {
                 )}
                 {step === 2 && (
                   <button
-                    className="btn btn-primary"
+                    className="btn btn-primary setup-footer-btn"
                     onClick={handleNextStep2}
                     disabled={usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
                     style={{
@@ -891,7 +872,7 @@ export default function SetupPage() {
                 )}
                 {step === 3 && (
                   <button
-                    className="btn btn-primary"
+                    className="btn btn-primary setup-footer-btn"
                     onClick={handleSubmit}
                     disabled={startSessionLoading || usageLoading || usageStatus?.blocked || usageStatus?.remaining === 0}
                     style={{
@@ -1062,19 +1043,19 @@ export default function SetupPage() {
             </div>
 
             <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.3rem' }}>
                 <ShieldCheck size={16} color="var(--primary-blue)" />
-                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                  Simpan draft latihan?
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                  Simpan draft?
                 </h3>
               </div>
 
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.55 }}>
-                RuangUji dapat menyimpan data yang sedang Anda isi di halaman ini, sehingga draft latihan tidak hilang jika halaman tertutup atau ter-refresh.
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                Aktifkan agar isian latihan tidak hilang saat halaman refresh.
               </p>
 
-              <p style={{ margin: '0.5rem 0 0', color: 'var(--text-muted)', fontSize: '0.74rem', lineHeight: 1.45 }}>
-                Yang disimpan hanya data sementara dari form. File asli tidak disimpan di browser.
+              <p style={{ margin: '0.45rem 0 0', color: 'var(--text-muted)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                File asli tidak disimpan di browser.
               </p>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.9rem' }}>
@@ -1120,7 +1101,7 @@ export default function SetupPage() {
           <RuangUjiBot state="idle" size={46} />
 
           <span className="setup-cache-fab-bubble">
-            Aktifkan penyimpanan draft agar data latihan tidak hilang saat halaman ter-refresh.
+            Aktifkan draft agar isian latihan tetap tersimpan saat refresh.
           </span>
         </button>
       )}

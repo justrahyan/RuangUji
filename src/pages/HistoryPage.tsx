@@ -67,6 +67,15 @@ function buildTranscriptPdfGroups(transcript: HistoryItem['transcript'] = []): T
   return groups;
 }
 
+function formatPdfDuration(ms?: number) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function downloadTranscriptPdf(item: HistoryItem) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -207,6 +216,7 @@ function downloadTranscriptPdf(item: HistoryItem) {
       ['Metode', item.method || '-'],
       ['Mode Penguji', item.examinerMode || '-'],
       ['Durasi', `${item.sessionLength || 'Normal'} (${item.questionCount} Pertanyaan)`],
+      ['Rata-rata Waktu Menjawab', item.averageAnswerDurationMs ? formatPdfDuration(item.averageAnswerDurationMs) : '-'],
     ];
 
     let currentX = leftX;
@@ -558,6 +568,8 @@ export default function HistoryPage() {
               { label: 'Bidang', value: selectedItem.field },
               { label: 'Metode', value: selectedItem.method },
               { label: 'Durasi', value: `${selectedItem.sessionLength || 'Normal'} (${selectedItem.questionCount} Pertanyaan)` },
+              { label: 'Rata-rata Waktu Menjawab', value: selectedItem.averageAnswerDurationMs ? formatPdfDuration(selectedItem.averageAnswerDurationMs) : null },
+              { label: 'Catatan Tempo', value: selectedItem.answerTimingInsight },
             ]}
           />
 

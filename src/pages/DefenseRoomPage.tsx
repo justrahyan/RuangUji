@@ -24,7 +24,7 @@ import {
   getInMemoryDocumentText,
 } from '../lib/storage';
 import { evaluateAnswer, generateFinalEvaluation } from '../lib/localEngine';
-import { speakText, stopSpeaking, handleMuteToggle } from '../lib/speech';
+import { speakText, stopSpeaking, handleMuteToggle, isVoiceMuted } from '../lib/speech';
 
 import VoiceAnswer from '../components/VoiceAnswer';
 import ConfirmModal from '../components/ConfirmModal';
@@ -67,6 +67,13 @@ function normalizeFeedback(evaluation: any) {
     suggestion = suggestion.trim().replace(/\s+/g, ' ');
   }
 
+  let summary = evaluation.summary || evaluation.feedbackSummary;
+  if (!summary || typeof summary !== 'string' || !summary.trim()) {
+    summary = '';
+  } else {
+    summary = summary.trim().replace(/\s+/g, ' ');
+  }
+
   const speechText =
     typeof evaluation.speechText === 'string' && evaluation.speechText.trim()
       ? evaluation.speechText.trim()
@@ -79,6 +86,7 @@ function normalizeFeedback(evaluation: any) {
 
   return {
     score,
+    summary,
     strengths,
     weaknesses,
     suggestion,
@@ -95,6 +103,25 @@ function formatAnswerDuration(ms?: number) {
   const seconds = totalSeconds % 60;
 
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function buildFeedbackSummary(score: number, strengths: string[], weaknesses: string[]) {
+  const mainStrength = strengths[0] || 'jawaban sudah mulai merespons pertanyaan';
+  const mainWeakness = weaknesses[0] || 'masih ada ruang untuk membuat jawaban lebih spesifik';
+
+  if (score >= 80) {
+    return `Secara umum, jawaban Anda sudah kuat. ${mainStrength} Namun, jawaban masih bisa dibuat lebih meyakinkan dengan memperjelas detail teknis atau bukti pendukung.`;
+  }
+
+  if (score >= 60) {
+    return `Jawaban Anda sudah cukup relevan dan mulai menjawab inti pertanyaan. ${mainStrength} Bagian yang masih perlu diperkuat adalah ${mainWeakness.toLowerCase()}`;
+  }
+
+  if (score > 0) {
+    return `Jawaban Anda sudah mencoba merespons, tetapi belum cukup kuat sebagai jawaban sidang. ${mainWeakness} Fokuskan jawaban pada inti pertanyaan, lalu tambahkan alasan dan kaitkan dengan penelitian Anda.`;
+  }
+
+  return `Jawaban belum dapat dinilai secara akademik karena belum menunjukkan isi yang relevan dengan pertanyaan. Mulai dengan menjawab inti pertanyaan secara langsung, lalu tambahkan alasan singkat.`;
 }
 
 function getAnswerTimingStats(transcript: TranscriptItem[]) {
@@ -159,6 +186,16 @@ export default function DefenseRoomPage() {
 
   const questionStartedAtRef = useRef<number>(0);
   const [answerTimerSeconds, setAnswerTimerSeconds] = useState(0);
+
+  const startAnswerTimer = () => {
+    questionStartedAtRef.current = Date.now();
+    setAnswerTimerSeconds(0);
+  };
+
+  const resetAnswerTimer = () => {
+    questionStartedAtRef.current = 0;
+    setAnswerTimerSeconds(0);
+  };
 
   const middleScrollRef = useRef<HTMLDivElement>(null);
 
@@ -258,6 +295,17 @@ export default function DefenseRoomPage() {
     setVoiceEnabled(newVal);
     localStorage.setItem('ruanguji_voice_muted', newVal ? 'false' : 'true');
 
+    if (!newVal) {
+      stopSpeaking();
+      setOrbState('idle');
+
+      if (currentQuestion && !hasFeedback && !questionStartedAtRef.current) {
+        startAnswerTimer();
+      }
+
+      return;
+    }
+
     handleMuteToggle();
   };
 
@@ -351,8 +399,7 @@ export default function DefenseRoomPage() {
       };
 
       setCurrentQuestion(newQuestion);
-      questionStartedAtRef.current = Date.now();
-      setAnswerTimerSeconds(0);
+      resetAnswerTimer();
       setSession(updatedSession);
       saveActiveSession(updatedSession);
 
@@ -360,13 +407,21 @@ export default function DefenseRoomPage() {
       setIsGeneratingQuestion(false);
       setAiStatus('idle');
 
-      setOrbState('speaking');
+      if (voiceEnabled && !isVoiceMuted()) {
+        setOrbState('speaking');
 
-      speakText(
-        questionSpeechText,
-        () => setOrbState('speaking'),
-        () => setOrbState('idle')
-      );
+        speakText(
+          questionSpeechText,
+          () => setOrbState('speaking'),
+          () => {
+            setOrbState('idle');
+            startAnswerTimer();
+          }
+        );
+      } else {
+        setOrbState('idle');
+        startAnswerTimer();
+      }
     };
 
     try {
@@ -555,12 +610,16 @@ export default function DefenseRoomPage() {
     const strengthsText = normEval.strengths.map((s, idx) => `${idx + 1}) ${s}`).join('\n');
     const weaknessesText = normEval.weaknesses.map((w, idx) => `${idx + 1}) ${w}`).join('\n');
 
+    const feedbackSummary =
+      normEval.summary || buildFeedbackSummary(normEval.score, normEval.strengths, normEval.weaknesses);
+
     const feedbackText =
       `Skor: ${normEval.score}.\n` +
       `Waktu menjawab: ${formatAnswerDuration(answerDurationMs)}.\n\n` +
-      `Kekuatan:\n${strengthsText}\n\n` +
-      `Perlu Diperbaiki:\n${weaknessesText}\n\n` +
-      `Saran:\n${normEval.suggestion}`;
+      `Ringkasan:\n${feedbackSummary}\n\n` +
+      `Yang sudah bagus:\n${strengthsText}\n\n` +
+      `Yang perlu diperkuat:\n${weaknessesText}\n\n` +
+      `Saran latihan:\n${normEval.suggestion}`;
 
     const speechStrengths = normEval.strengths
       .slice(0, 2)
@@ -573,10 +632,14 @@ export default function DefenseRoomPage() {
       .join('. ');
 
     const feedbackSpeechText =
-      `Skor ${normEval.score}. ` +
-      `Kekuatan: ${speechStrengths || 'belum terlihat jelas'}. ` +
-      `Yang perlu diperbaiki: ${speechWeaknesses || 'tidak ada catatan utama'}. ` +
-      `Saran: ${normEval.suggestion}`;
+      normEval.speechText ||
+      (
+        `Skor ${normEval.score}. ` +
+        `${feedbackSummary} ` +
+        `Yang sudah bagus: ${speechStrengths || 'belum terlihat jelas'}. ` +
+        `Yang perlu diperkuat: ${speechWeaknesses || 'tidak ada catatan utama'}. ` +
+        `Saran latihan: ${normEval.suggestion}`
+      );
 
     const fbItem: TranscriptItem = {
       id: Date.now().toString(),
@@ -608,13 +671,17 @@ export default function DefenseRoomPage() {
     setIsEvaluatingAnswer(false);
     setAiStatus(errorOccurred ? 'error' : 'idle');
 
-    setOrbState('speaking');
+    if (!isVoiceMuted()) {
+      setOrbState('speaking');
 
-    speakText(
-      feedbackSpeechText,
-      () => setOrbState('speaking'),
-      () => setOrbState('idle')
-    );
+      speakText(
+        feedbackSpeechText,
+        () => setOrbState('speaking'),
+        () => setOrbState('idle')
+      );
+    } else {
+      setOrbState('idle');
+    }
   };
 
   const handleNextQuestion = () => {
@@ -812,6 +879,24 @@ export default function DefenseRoomPage() {
             ? 'Sedang berbicara'
             : 'Siap menguji';
 
+  const compactOrbStateLabel = isVoiceListening
+    ? 'Dengar'
+    : isGeneratingQuestion
+      ? 'Siap...'
+      : isEvaluatingAnswer
+        ? 'Nilai'
+        : isFinishingSession
+          ? 'Evaluasi'
+          : effectiveOrbState === 'speaking'
+            ? 'Bicara'
+            : 'Siap';
+
+  const showAnswerTimer =
+    Boolean(currentQuestion) &&
+    !hasFeedback &&
+    !isGeneratingQuestion &&
+    !isEvaluatingAnswer;
+
   const quotaMessage = 'Mode hemat AI aktif karena kuota penuh.';
   const aiDisclaimerMessage = 'RuangUji bisa keliru. Gunakan sebagai latihan, bukan penilaian final.';
 
@@ -893,22 +978,61 @@ export default function DefenseRoomPage() {
         </div>
       </header>
 
-      <div className="defense-mobile-tabs">
-        <button
-          onClick={() => setShowLeftDrawer((prev) => !prev)}
-          className={`defense-mobile-tab-btn ${showLeftDrawer ? 'active' : ''}`}
-        >
-          <Info size={14} />
-          Info
-        </button>
+      <div className="defense-mobile-controls">
+        <div className="defense-mobile-tabs">
+          <button
+            onClick={() => setShowLeftDrawer((prev) => !prev)}
+            className={`defense-mobile-tab-btn ${showLeftDrawer ? 'active' : ''}`}
+          >
+            <Info size={13} />
+            <span>Info</span>
+          </button>
 
-        <button
-          onClick={() => setShowRightDrawer((prev) => !prev)}
-          className={`defense-mobile-tab-btn ${showRightDrawer ? 'active' : ''}`}
-        >
-          <FileText size={14} />
-          Transkrip
-        </button>
+          <button
+            onClick={() => setShowRightDrawer((prev) => !prev)}
+            className={`defense-mobile-tab-btn ${showRightDrawer ? 'active' : ''}`}
+          >
+            <FileText size={13} />
+            <span>Transkrip</span>
+          </button>
+        </div>
+
+        <div className="defense-mobile-toolbar-row">
+          <div
+            className="defense-voice-control defense-voice-control-mobile"
+            title="Pilih gaya suara RuangUji"
+          >
+            <AudioLines size={13} />
+            <select
+              value={voiceProfile}
+              onChange={(e) => {
+                setVoiceProfile(e.target.value);
+                localStorage.setItem('ruanguji_voice_profile', e.target.value);
+              }}
+              aria-label="Pilih gaya suara RuangUji"
+            >
+              <option value="Tenang">Tenang</option>
+              <option value="Formal">Formal</option>
+              <option value="Hangat">Hangat</option>
+              <option value="Tegas">Tegas</option>
+              <option value="Cepat">Cepat</option>
+            </select>
+          </div>
+
+          <div className="defense-mobile-status-group">
+            {showAnswerTimer && (
+              <div className="defense-mobile-chip">
+                <Clock3 size={12} />
+                <span>{formatAnswerDuration(answerTimerSeconds * 1000)}</span>
+              </div>
+            )}
+
+            <div className={`defense-mobile-chip state ${botVisualState !== 'idle' ? 'active' : ''}`}>
+              <span className="defense-mobile-dot" />
+              <span>{compactOrbStateLabel}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <main className="defense-workspace-grid">
@@ -960,8 +1084,8 @@ export default function DefenseRoomPage() {
           <div className="defense-main-header">
             <p>{isVoiceMode ? 'Voice Stage' : 'Panel Penguji'}</p>
 
-            <div className="defense-main-header-actions">
-              {currentQuestion && !hasFeedback && !isGeneratingQuestion && !isEvaluatingAnswer && (
+            <div className="defense-main-header-actions defense-main-header-actions-desktop">
+              {showAnswerTimer && (
                 <div className="defense-timer-pill" title="Waktu menjawab pertanyaan aktif">
                   <Clock3 size={14} />
                   <span>{formatAnswerDuration(answerTimerSeconds * 1000)}</span>

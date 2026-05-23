@@ -25,6 +25,8 @@ function safeSpeechText(value: unknown, fallback: string) {
 }
 
 function clampScoreByCategory(score: number, category: string) {
+  if (category === 'gibberish') return 0;
+
   const c = String(category || "").toLowerCase();
 
   if (c === "empty" || c === "copy_question" || c === "feedback_text") {
@@ -999,17 +1001,21 @@ ATURAN PENILAIAN:
 8. strengths tidak boleh memuji hal yang tidak ada pada jawaban.
 9. weaknesses harus menjelaskan masalah spesifik dari jawaban terakhir.
 10. suggestion harus memberi arahan konkret bagaimana memperbaiki jawaban itu.
-11. Buat speechText sebagai versi ringkas feedback yang enak dibacakan suara. Jangan terlalu panjang. Jangan mengubah skor.
+11. Buat summary berupa ringkasan naratif singkat 1-2 kalimat. Gaya bahasanya seperti dosen penguji yang memberi arahan langsung, bukan laporan kaku.
+12. Buat strengths dan weaknesses tetap dalam poin-poin pendek agar mudah dibaca.
+13. Buat suggestion sebagai arahan latihan yang konkret.
+14. Buat speechText sebagai versi ringkas feedback yang enak dibacakan suara. Jangan terlalu panjang. Jangan mengubah skor.
 
 Output wajib JSON valid:
 {
   "normalizedAnswer": "rekonstruksi maksud jawaban mahasiswa dalam bahasa Indonesia yang rapi, tanpa mengubah substansi",
   "answerCategory": "partial_relevant_informal",
   "score": 45,
+  "summary": "Jawaban Anda sudah mulai menyentuh inti pertanyaan, tetapi argumennya masih perlu dibuat lebih akademik dan dikaitkan dengan detail penelitian.",
   "strengths": ["..."],
   "weaknesses": ["..."],
   "suggestion": "...",
-  "speechText": "Skor empat puluh lima. Jawaban sudah menyentuh sebagian inti pertanyaan, tetapi alasannya belum akademik...",
+  "speechText": "Skor empat puluh lima. Jawaban Anda sudah mulai menyentuh inti pertanyaan, tetapi argumennya masih perlu diperkuat...",
   "provider": "gemini"
 }
 `.trim();
@@ -1019,6 +1025,8 @@ Output wajib JSON valid:
   const answerCategory = safeText(result.answerCategory, "partial_relevant");
   let score = Math.max(0, Math.min(100, Number(result.score) || 0));
   score = clampScoreByCategory(score, answerCategory);
+
+  if (answerCategory === 'gibberish') score = 0;
 
   const strengths = Array.isArray(result.strengths)
     ? result.strengths.map((x: any) => String(x).trim()).filter(Boolean)
@@ -1031,6 +1039,11 @@ Output wajib JSON valid:
   const suggestion = safeText(result.suggestion, "Pertahankan struktur jawaban dan sesuaikan dengan inti pertanyaan.");
   const normalizedAnswer = safeSpeechText(result.normalizedAnswer, answer);
 
+  const summary = safeText(
+    result.summary,
+    "Jawaban sudah dinilai berdasarkan relevansi, kejelasan, dan keterkaitannya dengan konteks penelitian."
+  );
+
   const defaultSpeech = buildFallbackSpeechText(
     `Skor ${score}. ${suggestion}`
   );
@@ -1039,6 +1052,7 @@ Output wajib JSON valid:
     score,
     answerCategory,
     normalizedAnswer,
+    summary,
     strengths: strengths.length ? strengths : ["Belum terlihat kekuatan yang signifikan dari jawaban ini."],
     weaknesses: weaknesses.length ? weaknesses : ["Tidak ada."],
     suggestion,

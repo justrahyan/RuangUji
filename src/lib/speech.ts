@@ -3,7 +3,10 @@ let currentEndCallback: (() => void) | undefined;
 let currentStartCallback: (() => void) | undefined;
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 let isStoppingIntentionally = false;
-let isPausedByMute = false;
+
+export function isVoiceMuted() {
+  return localStorage.getItem('ruanguji_voice_muted') === 'true';
+}
 
 function normalizeForSpeech(text: string): string {
   return String(text || '')
@@ -50,20 +53,20 @@ function applyVoiceProfile(utterance: SpeechSynthesisUtterance) {
   const profile = localStorage.getItem('ruanguji_voice_profile') || 'Formal';
 
   if (profile === 'Tenang') {
-    utterance.rate = 0.86;
-    utterance.pitch = 1.04;
+    utterance.rate = 0.78;
+    utterance.pitch = 0.98;
   } else if (profile === 'Hangat') {
-    utterance.rate = 0.9;
-    utterance.pitch = 1.08;
+    utterance.rate = 0.88;
+    utterance.pitch = 1.12;
   } else if (profile === 'Tegas') {
     utterance.rate = 0.98;
-    utterance.pitch = 0.96;
+    utterance.pitch = 0.86;
   } else if (profile === 'Cepat') {
-    utterance.rate = 1.12;
+    utterance.rate = 1.22;
     utterance.pitch = 1.0;
   } else {
-    utterance.rate = 0.88;
-    utterance.pitch = 1.02;
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
   }
 }
 
@@ -77,17 +80,6 @@ function createUtterance(text: string) {
 
   utterance.onstart = () => {
     if (currentStartCallback) currentStartCallback();
-
-    const muted = localStorage.getItem('ruanguji_voice_muted') === 'true';
-    if (muted) {
-      isPausedByMute = true;
-
-      window.setTimeout(() => {
-        if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
-          window.speechSynthesis.pause();
-        }
-      }, 0);
-    }
   };
 
   utterance.onend = () => {
@@ -95,7 +87,6 @@ function createUtterance(text: string) {
 
     activeUtterance = null;
     currentFullText = '';
-    isPausedByMute = false;
 
     if (currentEndCallback) currentEndCallback();
   };
@@ -105,7 +96,6 @@ function createUtterance(text: string) {
 
     activeUtterance = null;
     currentFullText = '';
-    isPausedByMute = false;
 
     if (currentEndCallback) currentEndCallback();
   };
@@ -114,7 +104,10 @@ function createUtterance(text: string) {
 }
 
 export function speakText(text: string, onStart?: () => void, onEnd?: () => void) {
-  if (!('speechSynthesis' in window)) return;
+  if (!('speechSynthesis' in window)) {
+    onEnd?.();
+    return;
+  }
 
   stopSpeaking();
 
@@ -122,10 +115,21 @@ export function speakText(text: string, onStart?: () => void, onEnd?: () => void
   currentStartCallback = onStart;
   currentEndCallback = onEnd;
 
-  if (!currentFullText) return;
+  if (!currentFullText) {
+    onEnd?.();
+    return;
+  }
+
+  if (isVoiceMuted()) {
+    activeUtterance = null;
+    currentFullText = '';
+    currentStartCallback = undefined;
+    currentEndCallback = undefined;
+    onEnd?.();
+    return;
+  }
 
   isStoppingIntentionally = false;
-  isPausedByMute = false;
 
   const utterance = createUtterance(currentFullText);
   activeUtterance = utterance;
@@ -136,20 +140,10 @@ export function speakText(text: string, onStart?: () => void, onEnd?: () => void
 export function handleMuteToggle() {
   if (!('speechSynthesis' in window)) return;
 
-  const muted = localStorage.getItem('ruanguji_voice_muted') === 'true';
+  const muted = isVoiceMuted();
 
   if (muted) {
-    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-      isPausedByMute = true;
-      window.speechSynthesis.pause();
-    }
-
-    return;
-  }
-
-  if (window.speechSynthesis.paused || isPausedByMute) {
-    isPausedByMute = false;
-    window.speechSynthesis.resume();
+    stopSpeaking();
   }
 }
 
@@ -158,7 +152,6 @@ export function stopSpeaking() {
   activeUtterance = null;
   currentEndCallback = undefined;
   currentStartCallback = undefined;
-  isPausedByMute = false;
 
   if ('speechSynthesis' in window) {
     isStoppingIntentionally = true;

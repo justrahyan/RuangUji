@@ -708,12 +708,50 @@ function isLikelyOffTopicAnswer(question: string, answer: string, research: any)
   return !hasQuestionContentOverlap(question, answer) && !hasRelevantResearchKeyword(answer, research);
 }
 
+function isGibberishAnswer(answer: string) {
+  const text = String(answer || '').trim().toLowerCase();
+
+  if (!text) return true;
+
+  const cleaned = text.replace(/\s+/g, '');
+
+  if (cleaned.length <= 5) return true;
+
+  const hasSpace = /\s/.test(text);
+  const hasVowel = /[aiueo]/i.test(text);
+  const hasCommonAcademicWord =
+    /\b(karena|penelitian|metode|data|hasil|tujuan|masalah|sistem|model|algoritma|analisis|validasi|uji|responden|akurasi|kontribusi|gap|novelty)\b/i.test(text);
+
+  if (!hasSpace && cleaned.length < 10 && !hasCommonAcademicWord) return true;
+
+  if (/^(.)\1{3,}$/.test(cleaned)) return true;
+  if (/^(adadw|asdasd|asdf|qwerty|hjkl|test|tes|coba|gatau|ga tau|tidak tahu)$/i.test(text)) return true;
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount <= 2 && !hasCommonAcademicWord) return true;
+
+  if (!hasVowel) return true;
+
+  return false;
+}
+
 export function evaluateAnswer(
   question: string,
   answer: string,
   research: ResearchProfile,
   examinerMode: string
 ): AnswerEvaluation {
+  if (isGibberishAnswer(answer)) {
+    return {
+      score: 0,
+      strengths: ['Belum ada jawaban yang dapat dinilai.'],
+      weaknesses: ['Jawaban tidak memiliki makna akademik atau tidak menjawab pertanyaan.'],
+      suggestion: 'Berikan jawaban yang relevan dengan pertanyaan, minimal berisi inti jawaban dan alasan pendukung.',
+      answerCategory: 'gibberish',
+      speechText: 'Skor nol. Jawaban belum dapat dinilai karena tidak memiliki makna akademik yang jelas.',
+    };
+  }
+
   const q = normalizeForCompare(question);
   const a = normalizeForCompare(answer);
   const rawAnswer = String(answer || "").trim();
